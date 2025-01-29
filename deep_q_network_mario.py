@@ -9,7 +9,11 @@ import torch.optim as optim
 from collections import deque
 import random
 import time 
+import os
 
+
+
+SAVE_DIR = "saved_models"
 LEARNING_RATE = 1e-4
 GAMMA = 0.99
 EPSILON_START = 1.0
@@ -18,10 +22,27 @@ EPSILON_DECAY = 0.999
 BATCH_SIZE = 64
 MEMORY_SIZE = 100000
 TARGET_UPDATE = 10
+EPISODE_SAVE = 50
+MAX_STEPS = 5000
 
-max_steps = 1000
+if not os.path.exists(SAVE_DIR):
+    os.makedirs(SAVE_DIR)
 
-env = gym_super_mario_bros.make('SuperMarioBros-v0', max_episode_steps=max_steps)
+def save_models(episode, policy_net, target_net):
+    policy_path = os.path.join(SAVE_DIR, f"policy_net_episode_{episode}.pth")
+    target_path = os.path.join(SAVE_DIR, f"target_net_episode_{episode}.pth")
+    torch.save(policy_net.state_dict(), policy_path)
+    torch.save(target_net.state_dict(), target_path)
+    print(f"Models saved at episode {episode}")
+
+def load_models(episode, policy_net, target_net):
+    policy_path = os.path.join(SAVE_DIR, f"policy_net_episode_{episode}.pth")
+    target_path = os.path.join(SAVE_DIR, f"target_net_episode_{episode}.pth")
+    policy_net.load_state_dict(torch.load(policy_path))
+    target_net.load_state_dict(torch.load(target_path))
+    print(f"Models loaded from episode {episode}")
+
+env = gym_super_mario_bros.make('SuperMarioBros-v0', max_episode_steps=MAX_STEPS)
 env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
 # Converts the state to grayscale. Crops, downsamples, normalises.
@@ -120,6 +141,9 @@ for episode in range(10000):
     epsilon = max(EPSILON_MIN, epsilon * EPSILON_DECAY)
     elapsed_time = time.time() - start_time
     print(f"Episode {episode}, Total Reward: {total_reward}, Time Elapsed: {elapsed_time:.2f} seconds")
+
+    if episode % EPISODE_SAVE == 0:
+        save_models(episode, policy_net, target_net)
 
 
 env.close()
