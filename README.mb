@@ -1,1 +1,10 @@
 Python 3.8 required
+
+
+Required packages:
+
+```bash
+pip install nes_py
+pip install gym_super_mario_bros
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+```
