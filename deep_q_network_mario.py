@@ -19,11 +19,12 @@ GAMMA = 0.99
 EPSILON_START = 1.0
 EPSILON_MIN = 0.01
 EPSILON_DECAY = 0.999
+EPSILON_UPDATE = 80
 BATCH_SIZE = 64
-MEMORY_SIZE = 100000
-TARGET_UPDATE = 10
-EPISODE_SAVE = 50
-MAX_STEPS = 5000
+MEMORY_SIZE = 30000
+TARGET_UPDATE = 1000
+EPISODE_SAVE = 10
+MAX_STEPS = 4000
 
 if not os.path.exists(SAVE_DIR):
     os.makedirs(SAVE_DIR)
@@ -96,7 +97,7 @@ for episode in range(10000):
     done = False
     total_reward = 0
 
-    while not done:
+    for frame in range(MAX_STEPS + 1):
         if np.random.rand() < epsilon:
             action = env.action_space.sample()
         else:
@@ -135,12 +136,14 @@ for episode in range(10000):
             optimizer.step()
 
 
-    if episode % TARGET_UPDATE == 0:
-        target_net.load_state_dict(policy_net.state_dict())
-    
-    epsilon = max(EPSILON_MIN, epsilon * EPSILON_DECAY)
+        if frame % TARGET_UPDATE == 0:
+            target_net.load_state_dict(policy_net.state_dict())
+
+        if frame % EPSILON_UPDATE == 0:
+            epsilon = max(EPSILON_MIN, epsilon*EPSILON_DECAY)
+
     elapsed_time = time.time() - start_time
-    print(f"Episode {episode}, Total Reward: {total_reward}, Time Elapsed: {elapsed_time:.2f} seconds")
+    print(f"Episode {episode}, Total Reward: {total_reward}, Time Elapsed: {elapsed_time:.2f} seconds, epsilon {epsilon}")
 
     if episode % EPISODE_SAVE == 0:
         save_models(episode, policy_net, target_net)
