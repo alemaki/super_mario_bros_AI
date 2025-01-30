@@ -8,8 +8,9 @@ from collections import deque
 import time 
 import os
 from deep_q_network.deep_q_network import DQN, device, save_dqn_models, load_dqn_models
-from utils import preprocess_state
+from utils import preprocess_state, record_info_for_episode
 
+LOG_FILE_NAME = "dqn_saved_models/episodes_log.log"
 SAVE_DIR = "dqn_saved_models"
 START_MODEL_EPISODE = 50
 LEARNING_RATE = 1e-4
@@ -60,7 +61,7 @@ for episode in range(START_MODEL_EPISODE + 1, 10000):
             state_tensor = state.unsqueeze(0) # Add batch dimension
             action = policy_net(state_tensor).argmax(dim=1).item()
 
-        next_state, reward, done, truncated, _ = env.step(action)
+        next_state, reward, done, truncated, info = env.step(action)
         next_state = preprocess_state(next_state, device=device)
         next_state = torch.cat((state[1:], next_state.unsqueeze(0)), dim=0)  # Update frame stack
 
@@ -87,6 +88,8 @@ for episode in range(START_MODEL_EPISODE + 1, 10000):
 
     elapsed_time = time.time() - start_time
     print(f"Episode {episode}, Total Reward: {total_reward}, Time Elapsed: {elapsed_time:.2f} seconds, epsilon {epsilon}")
+
+    record_info_for_episode(LOG_FILE_NAME, episode, total_reward, elapsed_time, info)
 
     if episode % EPISODE_SAVE == 0:
         save_dqn_models(episode, policy_net, target_net, SAVE_DIR)
