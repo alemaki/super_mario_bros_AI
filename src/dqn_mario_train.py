@@ -45,6 +45,7 @@ optimizer = optim.Adam(policy_net.parameters(), lr=LEARNING_RATE)
 memory = deque(maxlen=MEMORY_SIZE)
 
 epsilon = EPSILON_START
+epsilon = max(EPSILON_MIN, epsilon*(EPSILON_DECAY**(START_MODEL_EPISODE*MAX_STEPS/EPSILON_UPDATE)))
 
 for episode in range(START_MODEL_EPISODE + 1, 10000):
     start_time = time.time()
