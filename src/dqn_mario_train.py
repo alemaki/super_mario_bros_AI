@@ -11,6 +11,7 @@ from deep_q_network.deep_q_network import DQN, device, save_dqn_models, load_dqn
 from utils import preprocess_state
 
 SAVE_DIR = "dqn_saved_models"
+START_MODEL_EPISODE = 50
 LEARNING_RATE = 1e-4
 GAMMA = 0.99
 EPSILON_START = 1.0
@@ -31,8 +32,12 @@ env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
 input_shape = preprocess_state(env.reset(), device=device).unsqueeze(0).repeat(4, 1, 1).shape  # 4 stacked frames
 n_actions = env.action_space.n
+
 policy_net = DQN(input_shape, n_actions).to(device)
 target_net = DQN(input_shape, n_actions).to(device)
+if START_MODEL_EPISODE != -1:
+    load_dqn_models(START_MODEL_EPISODE, policy_net, target_net, SAVE_DIR)
+
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 optimizer = optim.Adam(policy_net.parameters(), lr=LEARNING_RATE)
@@ -40,7 +45,7 @@ memory = deque(maxlen=MEMORY_SIZE)
 
 epsilon = EPSILON_START
 
-for episode in range(10000):
+for episode in range(START_MODEL_EPISODE + 1, 10000):
     start_time = time.time()
     state = preprocess_state(env.reset(), device=device)
     state = state.unsqueeze(0).repeat(4, 1, 1)
