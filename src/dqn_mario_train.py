@@ -9,9 +9,11 @@ import time
 import os
 from deep_q_network.deep_q_network import DQN, device, save_dqn_models, load_dqn_models
 from utils import preprocess_state, record_info_for_episode
+from pathlib import Path
 
-LOG_FILE_NAME = "dqn_saved_models/episodes_log.log"
-SAVE_DIR = "dqn_saved_models"
+BASE_DIR = Path(__file__).resolve().parent
+LOG_FILE_NAME = BASE_DIR / "dqn_saved_models/episodes_log.log"
+SAVE_DIR = BASE_DIR / "dqn_saved_models"
 START_MODEL_EPISODE = 50
 LEARNING_RATE = 1e-4
 GAMMA = 0.99
