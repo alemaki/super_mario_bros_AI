@@ -6,11 +6,9 @@ from collections import deque
 import random
 from os import path
 
-def save_dqn_models(episode, policy_net, target_net, save_dir = "dqn_saved_models"):
+def save_dqn_model(episode, policy_net, target_net, save_dir = "dqn_saved_models"):
     policy_path = path.join(save_dir, f"policy_net_episode_{episode}.pth")
-    target_path = path.join(save_dir, f"target_net_episode_{episode}.pth")
     torch.save(policy_net.state_dict(), policy_path)
-    torch.save(target_net.state_dict(), target_path)
     print(f"Models saved at episode {episode}")
 
 def load_dqn_models(episode, policy_net, target_net, save_dir = "dqn_saved_models"):

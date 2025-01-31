@@ -12,9 +12,9 @@ from utils import preprocess_state, record_info_for_episode
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-LOG_FILE_NAME = BASE_DIR / "dqn_saved_models/episodes_log.log"
-SAVE_DIR = BASE_DIR / "dqn_saved_models"
-START_MODEL_EPISODE = 50
+SAVE_DIR = BASE_DIR / "dqn_simple_movement_one_life_models"
+LOG_FILE_NAME = BASE_DIR / "dqn_simple_movement_one_life_models" / "episodes_log.log"
+START_MODEL_EPISODE = 210
 LEARNING_RATE = 1e-4
 GAMMA = 0.99
 EPSILON_START = 1.0
@@ -23,9 +23,10 @@ EPSILON_DECAY = 0.999
 EPSILON_UPDATE = 80
 BATCH_SIZE = 64
 MEMORY_SIZE = 30000
-TARGET_UPDATE = 1000
-EPISODE_SAVE = 10
+TARGET_UPDATE = 4000
+EPISODE_SAVE = 50
 MAX_STEPS = 4000
+ONE_LIFE = True
 
 if not os.path.exists(SAVE_DIR):
     os.makedirs(SAVE_DIR)
@@ -58,6 +59,7 @@ for episode in range(START_MODEL_EPISODE + 1, 10000):
     total_reward = 0
 
     for frame in range(MAX_STEPS + 1):
+        #env.render()
         if np.random.rand() < epsilon:
             action = env.action_space.sample()
         else:
@@ -88,6 +90,9 @@ for episode in range(START_MODEL_EPISODE + 1, 10000):
 
         if frame % EPSILON_UPDATE == 0:
             epsilon = max(EPSILON_MIN, epsilon*EPSILON_DECAY)
+
+        if ONE_LIFE and info['life'] < 2:
+            break
 
     elapsed_time = time.time() - start_time
     print(f"Episode {episode}, Total Reward: {total_reward}, Time Elapsed: {elapsed_time:.2f} seconds, epsilon {epsilon}")
