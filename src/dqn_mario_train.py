@@ -7,25 +7,25 @@ import torch.optim as optim
 from collections import deque
 import time 
 import os
-from deep_q_network.deep_q_network import DQN, device, save_dqn_models, load_dqn_models
+from deep_q_network.deep_q_network import DQN, device, save_dqn_model, load_dqn_models
 from utils import preprocess_state, record_info_for_episode
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-SAVE_DIR = BASE_DIR / "dqn_simple_movement_one_life_models"
-LOG_FILE_NAME = BASE_DIR / "dqn_simple_movement_one_life_models" / "episodes_log.log"
-START_MODEL_EPISODE = 210
-LEARNING_RATE = 1e-4
-GAMMA = 0.99
+SAVE_DIR = BASE_DIR / "dqn_simple_movement_one_life_bigger_models"
+LOG_FILE_NAME = BASE_DIR / "dqn_simple_movement_one_life_bigger_models" / "episodes_log.log"
+START_MODEL_EPISODE = 600
+LEARNING_RATE = 5e-4
+GAMMA = 1.01
 EPSILON_START = 1.0
 EPSILON_MIN = 0.01
 EPSILON_DECAY = 0.999
 EPSILON_UPDATE = 80
-BATCH_SIZE = 64
-MEMORY_SIZE = 30000
-TARGET_UPDATE = 4000
-EPISODE_SAVE = 50
-MAX_STEPS = 4000
+BATCH_SIZE = 128
+MEMORY_SIZE = 35000 # about 12 gigs of RAM
+TARGET_UPDATE = 3000
+EPISODE_SAVE = 100
+MAX_STEPS = 6000
 ONE_LIFE = True
 
 if not os.path.exists(SAVE_DIR):
@@ -37,8 +37,8 @@ env = JoypadSpace(env, SIMPLE_MOVEMENT)
 input_shape = preprocess_state(env.reset(), device=device).unsqueeze(0).repeat(4, 1, 1).shape  # 4 stacked frames
 n_actions = env.action_space.n
 
-policy_net = DQN(input_shape, n_actions).to(device)
-target_net = DQN(input_shape, n_actions).to(device)
+policy_net = DQN(input_shape, n_actions, True, 2).to(device)
+target_net = DQN(input_shape, n_actions, True, 2).to(device)
 if START_MODEL_EPISODE != -1:
     load_dqn_models(START_MODEL_EPISODE, policy_net, target_net, SAVE_DIR)
 
@@ -50,6 +50,8 @@ memory = deque(maxlen=MEMORY_SIZE)
 epsilon = EPSILON_START
 epsilon = max(EPSILON_MIN, epsilon*(EPSILON_DECAY**(START_MODEL_EPISODE*MAX_STEPS/EPSILON_UPDATE)))
 
+target_update_frames_left = 3000
+
 for episode in range(START_MODEL_EPISODE + 1, 10000):
     start_time = time.time()
     state = preprocess_state(env.reset(), device=device)
@@ -59,7 +61,6 @@ for episode in range(START_MODEL_EPISODE + 1, 10000):
     total_reward = 0
 
     for frame in range(MAX_STEPS + 1):
-        #env.render()
         if np.random.rand() < epsilon:
             action = env.action_space.sample()
         else:
@@ -73,7 +74,7 @@ for episode in range(START_MODEL_EPISODE + 1, 10000):
         if done or truncated: 
             break
         
-        memory.append((state.cpu().numpy(), action, reward, next_state.cpu().numpy(), done)) # store in RAM for faster sampling. Then transform again.
+        memory.append((state, action, reward, next_state, done))
         state = next_state
         total_reward += reward
 
@@ -85,8 +86,10 @@ for episode in range(START_MODEL_EPISODE + 1, 10000):
                                    GAMMA,
                                    BATCH_SIZE)
 
-        if frame % TARGET_UPDATE == 0:
+        target_update_frames_left -= 1
+        if target_update_frames_left <= 0:
             target_net.load_state_dict(policy_net.state_dict())
+            target_update_frames_left = TARGET_UPDATE
 
         if frame % EPSILON_UPDATE == 0:
             epsilon = max(EPSILON_MIN, epsilon*EPSILON_DECAY)
@@ -100,7 +103,7 @@ for episode in range(START_MODEL_EPISODE + 1, 10000):
     record_info_for_episode(LOG_FILE_NAME, episode, total_reward, elapsed_time, info)
 
     if episode % EPISODE_SAVE == 0:
-        save_dqn_models(episode, policy_net, target_net, SAVE_DIR)
+        save_dqn_model(episode, policy_net, SAVE_DIR)
 
 
 env.close()
