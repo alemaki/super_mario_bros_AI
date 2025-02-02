@@ -6,14 +6,14 @@ from collections import deque
 import random
 from os import path
 
-def save_dqn_model(episode, policy_net, target_net, save_dir = "dqn_saved_models"):
+def save_dqn_model(episode, policy_net, save_dir = "dqn_saved_models"):
     policy_path = path.join(save_dir, f"policy_net_episode_{episode}.pth")
     torch.save(policy_net.state_dict(), policy_path)
     print(f"Models saved at episode {episode}")
 
 def load_dqn_models(episode, policy_net, target_net, save_dir = "dqn_saved_models"):
     policy_path = path.join(save_dir, f"policy_net_episode_{episode}.pth")
-    target_path = path.join(save_dir, f"target_net_episode_{episode}.pth")
+    target_path = path.join(save_dir, f"policy_net_episode_{episode}.pth")
     policy_net.load_state_dict(torch.load(policy_path))
     target_net.load_state_dict(torch.load(target_path))
     print(f"Models loaded from episode {episode}")
@@ -21,20 +21,21 @@ def load_dqn_models(episode, policy_net, target_net, save_dir = "dqn_saved_model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class DQN(nn.Module):
-    def __init__(self, input_shape, n_actions: int):
+    def __init__(self, input_shape, n_actions: int, use_leaky_relu: bool = False, channel_multilier: int = 1):
         super(DQN, self).__init__()
+
         self.conv = nn.Sequential(
-            nn.Conv2d(input_shape[0], 32, kernel_size=8, stride=4),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2),
-            nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1),
-            nn.ReLU(),
+            nn.Conv2d(input_shape[0], 32*channel_multilier, kernel_size=8, stride=4),
+            nn.LeakyReLU() if use_leaky_relu else nn.ReLU(),
+            nn.Conv2d(32*channel_multilier, 64*channel_multilier, kernel_size=4, stride=2),
+            nn.LeakyReLU() if use_leaky_relu else nn.ReLU(),
+            nn.Conv2d(64*channel_multilier, 64*channel_multilier, kernel_size=3, stride=1),
+            nn.LeakyReLU() if use_leaky_relu else nn.ReLU(),
         )
         self.fc = nn.Sequential(
-            nn.Linear(self._feature_size(input_shape), 512),
-            nn.ReLU(),
-            nn.Linear(512, n_actions),
+            nn.Linear(self._feature_size(input_shape), 512*channel_multilier),
+            nn.LeakyReLU() if use_leaky_relu else nn.ReLU(),
+            nn.Linear(512*channel_multilier, n_actions),
         )
 
     def _feature_size(self, shape):
@@ -55,10 +56,10 @@ class DQN(nn.Module):
         batch = random.sample(memory, batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
 
-        states = torch.FloatTensor(np.array(states)).to(device)
+        states = torch.stack(states).to(device)  
+        next_states = torch.stack(next_states).to(device)
         actions = torch.LongTensor(actions).to(device)
         rewards = torch.FloatTensor(rewards).to(device)
-        next_states = torch.FloatTensor(np.array(next_states)).to(device)
         dones = torch.FloatTensor(dones).to(device)
 
         q_values = self(states).gather(1, actions.unsqueeze(1)).squeeze(1)
