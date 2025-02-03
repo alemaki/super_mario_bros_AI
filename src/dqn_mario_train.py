@@ -27,6 +27,7 @@ TARGET_UPDATE = 3000
 EPISODE_SAVE = 100
 MAX_STEPS = 6000
 ONE_LIFE = True
+CHANNEL_MULTIPLIER = 2
 
 if not os.path.exists(SAVE_DIR):
     os.makedirs(SAVE_DIR)
@@ -37,8 +38,8 @@ env = JoypadSpace(env, SIMPLE_MOVEMENT)
 input_shape = preprocess_state(env.reset(), device=device).unsqueeze(0).repeat(4, 1, 1).shape  # 4 stacked frames
 n_actions = env.action_space.n
 
-policy_net = DQN(input_shape, n_actions, True, 2).to(device)
-target_net = DQN(input_shape, n_actions, True, 2).to(device)
+policy_net = DQN(input_shape, n_actions, True, CHANNEL_MULTIPLIER).to(device)
+target_net = DQN(input_shape, n_actions, True, CHANNEL_MULTIPLIER).to(device)
 if START_MODEL_EPISODE != -1:
     load_dqn_models(START_MODEL_EPISODE, policy_net, target_net, SAVE_DIR)
 

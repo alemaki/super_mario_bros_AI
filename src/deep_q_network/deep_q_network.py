@@ -21,21 +21,21 @@ def load_dqn_models(episode, policy_net, target_net, save_dir = "dqn_saved_model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class DQN(nn.Module):
-    def __init__(self, input_shape, n_actions: int, use_leaky_relu: bool = False, channel_multilier: int = 1):
+    def __init__(self, input_shape, n_actions: int, use_leaky_relu: bool = False, channel_multiplier: int = 1):
         super(DQN, self).__init__()
 
         self.conv = nn.Sequential(
-            nn.Conv2d(input_shape[0], 32*channel_multilier, kernel_size=8, stride=4),
+            nn.Conv2d(input_shape[0], 32*channel_multiplier, kernel_size=8, stride=4),
             nn.LeakyReLU() if use_leaky_relu else nn.ReLU(),
-            nn.Conv2d(32*channel_multilier, 64*channel_multilier, kernel_size=4, stride=2),
+            nn.Conv2d(32*channel_multiplier, 64*channel_multiplier, kernel_size=4, stride=2),
             nn.LeakyReLU() if use_leaky_relu else nn.ReLU(),
-            nn.Conv2d(64*channel_multilier, 64*channel_multilier, kernel_size=3, stride=1),
+            nn.Conv2d(64*channel_multiplier, 64*channel_multiplier, kernel_size=3, stride=1),
             nn.LeakyReLU() if use_leaky_relu else nn.ReLU(),
         )
         self.fc = nn.Sequential(
-            nn.Linear(self._feature_size(input_shape), 512*channel_multilier),
+            nn.Linear(self._feature_size(input_shape), 512*channel_multiplier),
             nn.LeakyReLU() if use_leaky_relu else nn.ReLU(),
-            nn.Linear(512*channel_multilier, n_actions),
+            nn.Linear(512*channel_multiplier, n_actions),
         )
 
     def _feature_size(self, shape):
