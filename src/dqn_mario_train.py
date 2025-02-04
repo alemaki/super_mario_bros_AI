@@ -8,26 +8,27 @@ from collections import deque
 import time 
 import os
 from deep_q_network.deep_q_network import DQN, device, save_dqn_model, load_dqn_models
-from utils import preprocess_state, record_info_for_episode
+from utils import preprocess_smaller_state, record_info_for_episode
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-SAVE_DIR = BASE_DIR / "dqn_simple_movement_one_life_bigger_models"
-LOG_FILE_NAME = BASE_DIR / "dqn_simple_movement_one_life_bigger_models" / "episodes_log.log"
-START_MODEL_EPISODE = 600
+SAVE_DIR = BASE_DIR / "dqn_simple_movement_one_life_smaller_models"
+LOG_FILE_NAME = BASE_DIR / "dqn_simple_movement_one_life_smaller_models" / "episodes_log.log"
+START_MODEL_EPISODE = 1200
 LEARNING_RATE = 5e-4
 GAMMA = 1.01
 EPSILON_START = 1.0
 EPSILON_MIN = 0.01
 EPSILON_DECAY = 0.999
 EPSILON_UPDATE = 80
-BATCH_SIZE = 128
-MEMORY_SIZE = 35000 # about 12 gigs of RAM
+BATCH_SIZE = 64
+MEMORY_SIZE = 65000 
 TARGET_UPDATE = 3000
-EPISODE_SAVE = 100
+EPISODE_SAVE = 150
 MAX_STEPS = 6000
 ONE_LIFE = True
-CHANNEL_MULTIPLIER = 2
+CHANNEL_MULTIPLIER = 1
+EPISODE_STOP = 2000
 
 if not os.path.exists(SAVE_DIR):
     os.makedirs(SAVE_DIR)
@@ -35,7 +36,7 @@ if not os.path.exists(SAVE_DIR):
 env = gym_super_mario_bros.make('SuperMarioBros-v0', max_episode_steps=MAX_STEPS)
 env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
-input_shape = preprocess_state(env.reset(), device=device).unsqueeze(0).repeat(4, 1, 1).shape  # 4 stacked frames
+input_shape = preprocess_smaller_state(env.reset(), device=device).unsqueeze(0).repeat(4, 1, 1).shape  # 4 stacked frames
 n_actions = env.action_space.n
 
 policy_net = DQN(input_shape, n_actions, True, CHANNEL_MULTIPLIER).to(device)
@@ -55,7 +56,7 @@ target_update_frames_left = 3000
 
 for episode in range(START_MODEL_EPISODE + 1, 10000):
     start_time = time.time()
-    state = preprocess_state(env.reset(), device=device)
+    state = preprocess_smaller_state(env.reset(), device=device)
     state = state.unsqueeze(0).repeat(4, 1, 1)
 
     done = False
@@ -69,7 +70,7 @@ for episode in range(START_MODEL_EPISODE + 1, 10000):
             action = policy_net(state_tensor).argmax(dim=1).item()
 
         next_state, reward, done, truncated, info = env.step(action)
-        next_state = preprocess_state(next_state, device=device)
+        next_state = preprocess_smaller_state(next_state, device=device)
         next_state = torch.cat((state[1:], next_state.unsqueeze(0)), dim=0)  # Update frame stack
 
         if done or truncated: 
@@ -105,6 +106,9 @@ for episode in range(START_MODEL_EPISODE + 1, 10000):
 
     if episode % EPISODE_SAVE == 0:
         save_dqn_model(episode, policy_net, SAVE_DIR)
+    
+    if episode == EPISODE_STOP:
+        break
 
 
 env.close()
