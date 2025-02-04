@@ -11,6 +11,12 @@ def preprocess_state(state: np.ndarray, device) -> torch.Tensor:
     return state / 255.0
 
 
+def preprocess_smaller_state(state: np.ndarray, device) -> torch.Tensor:
+    state = torch.tensor(np.ascontiguousarray(state), device=device, dtype=torch.float32)
+    state = torch.mean(state, dim=2).byte()
+    state = state[50:220:2, 30:190:2] #  less info
+    return state / 255.0
+
 def record_info_for_episode(file_name, episode, total_reward, time, level_data):
     if not os.path.exists(file_name):
         with open(file_name, mode='w', newline='') as file:
