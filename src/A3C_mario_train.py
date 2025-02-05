@@ -178,7 +178,7 @@ if __name__ == "__main__":
 
     num_workers = mp.cpu_count()
     processes = []
-    for worker_id in range(1):
+    for worker_id in range(num_workers):
         p = mp.Process(target=worker,
                     args=(global_model,
                             optimizer,
