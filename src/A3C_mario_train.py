@@ -158,3 +158,60 @@ def worker(global_model,
                 save_model(global_model, current_episode)
     
     print(f"Worker {worker_id} stopped.")
+
+
+global_counter = mp.Value('i', 0)
+global_model_lock = mp.Lock()
+global_model_save_lock = mp.Lock()
+stop_flag = mp.Value('b', False)
+
+if __name__ == "__main__":
+    env = gym_super_mario_bros.make('SuperMarioBros-v0')
+    env = JoypadSpace(env, SIMPLE_MOVEMENT)
+    input_shape = preprocess_smaller_state(env.reset(), device).shape
+    n_actions = env.action_space.n
+
+    global_model = ActorCritic(input_shape, n_actions).to(device)
+    global_model.share_memory()
+
+    optimizer = optim.Adam(global_model.parameters(), lr=LEARNING_RATE)
+
+    num_workers = mp.cpu_count()
+    processes = []
+    for worker_id in range(1):
+        p = mp.Process(target=worker,
+                    args=(global_model,
+                            optimizer,
+                            worker_id,
+                            'SuperMarioBros-v0',
+                            n_actions,
+                            stop_flag))
+        p.start()
+        processes.append(p)
+
+
+    def signal_handler(sig, frame):
+        print("\nReceived termination signal. Stopping workers...")
+        stop_flag.value = True
+        for p in processes:
+            p.join()
+        sys.exit(0)
+
+    def on_press(key):
+        if key == keyboard.Key.space:
+            print("Spacebar pressed. Stopping workers...")
+            stop_flag.value = True
+            for p in processes:
+                p.join()
+            return False
+
+
+    signal.signal(signal.SIGINT, signal_handler) #catch control+C just in case
+    print("Press SPACE to stop workers...")
+
+    listener = keyboard.Listener(on_press=on_press)
+    listener.start()
+
+    # Keep the main process alive
+    while not stop_flag.value:
+        pass
