@@ -14,21 +14,21 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 SAVE_DIR = BASE_DIR / "dqn_simple_movement_one_life_smaller_models"
 LOG_FILE_NAME = BASE_DIR / "dqn_simple_movement_one_life_smaller_models" / "episodes_log.log"
-START_MODEL_EPISODE = 1200
-LEARNING_RATE = 5e-4
-GAMMA = 1.01
+START_MODEL_EPISODE = 4500
+LEARNING_RATE = 0.0005
+GAMMA = 0.9
 EPSILON_START = 1.0
 EPSILON_MIN = 0.01
-EPSILON_DECAY = 0.999
+EPSILON_DECAY = 0.9995
 EPSILON_UPDATE = 80
 BATCH_SIZE = 64
-MEMORY_SIZE = 65000 
-TARGET_UPDATE = 3000
-EPISODE_SAVE = 150
+MEMORY_SIZE = 80000 
+TARGET_UPDATE = 6000
+EPISODE_SAVE = 1000
 MAX_STEPS = 6000
 ONE_LIFE = True
 CHANNEL_MULTIPLIER = 1
-EPISODE_STOP = 2000
+EPISODE_STOP = 50000
 
 if not os.path.exists(SAVE_DIR):
     os.makedirs(SAVE_DIR)
@@ -52,7 +52,7 @@ memory = deque(maxlen=MEMORY_SIZE)
 epsilon = EPSILON_START
 epsilon = max(EPSILON_MIN, epsilon*(EPSILON_DECAY**(START_MODEL_EPISODE*MAX_STEPS/EPSILON_UPDATE)))
 
-target_update_frames_left = 3000
+target_update_frames_left = TARGET_UPDATE
 
 for episode in range(START_MODEL_EPISODE + 1, 10000):
     start_time = time.time()
@@ -63,6 +63,7 @@ for episode in range(START_MODEL_EPISODE + 1, 10000):
     total_reward = 0
 
     for frame in range(MAX_STEPS + 1):
+        #env.render()
         if np.random.rand() < epsilon:
             action = env.action_space.sample()
         else:
