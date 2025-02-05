@@ -5,12 +5,32 @@ import gym_super_mario_bros
 from nes_py.wrappers import JoypadSpace
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from actor_critic.actor_critic import ActorCritic, device
-from utils import preprocess_smaller_state
+from utils import preprocess_smaller_state, record_info_for_worker
 import os
 from pathlib import Path
+import signal
+import sys
+from pynput import keyboard
+import time
+
+# Set the multiprocessing start method (only once)
+if __name__ == "__main__":
+    try:
+        mp.set_start_method('spawn')  # Use 'spawn' for multiprocessing
+    except RuntimeError:
+        print("Multiprocessing context already set.")
 
 # Define the save directory
-SAVE_DIR = Path("saved_models")
+BASE_DIR = Path(__file__).resolve().parent
+SAVE_DIR = BASE_DIR / "a3c_simple_movement_models"
+LOG_FILE_NAME = BASE_DIR / "a3c_simple_movement_models" / "episodes_log.log"
+LEARNING_RATE = 1e-4
+GAMMA = 0.9
+ENTROPY_COEF = 0.01
+MODEL_SAVE_EPISODES = 100
+N_STEPS = 20
+MAX_STEPS_ENV = 5000
+
 if not os.path.exists(SAVE_DIR):
     os.makedirs(SAVE_DIR)
 
@@ -31,12 +51,10 @@ def compute_advantages_and_update(
         actions,
         rewards,
         values,
-        gamma=0.9,
-        entropy_coef=0.01,
         done = False):
 
 
-    states = torch.stack(states).to(device)
+    states = torch.stack(states).squeeze(dim=1).to(device)
     actions = torch.LongTensor(actions).to(device)
     rewards = torch.FloatTensor(rewards).to(device)
     values = torch.stack(values).squeeze().to(device)
@@ -49,11 +67,12 @@ def compute_advantages_and_update(
     returns = []
 
     for r in reversed(rewards):
-        R = r + gamma * R
+        R = r + GAMMA * R
         returns.insert(0, R)
-    returns = torch.tensor(returns, dtype=torch.float32)
+    returns = torch.tensor(returns, dtype=torch.float32).to(device)
 
     advantages = returns - values
+
 
     action_probs, _ = global_model(states)
     log_probs = torch.log(action_probs.gather(1, actions.unsqueeze(1)))
@@ -62,7 +81,7 @@ def compute_advantages_and_update(
     value_loss = 0.5 * (returns - values).pow(2).mean()
 
     entropy = -(action_probs * torch.log(action_probs)).sum(dim=1).mean()
-    entropy_loss = -entropy_coef * entropy
+    entropy_loss = -ENTROPY_COEF * entropy
 
     total_loss = policy_loss + value_loss + entropy_loss
 
@@ -75,27 +94,34 @@ def worker(global_model,
            worker_id,
            env_name,
            n_actions,
-           n_steps=20,
-           gamma=0.99,
-           entropy_coef=0.01,
-           save_interval=100):  # Save every 100 global episodes
-    env = gym_super_mario_bros.make(env_name)
-    env = JoypadSpace(env, SIMPLE_MOVEMENT)
-    local_model = ActorCritic(input_shape, n_actions)
-    local_model.load_state_dict(global_model.state_dict())
+           stop_flag):
+    
+    print(f"Worker {worker_id} started.")
 
-    while True:  # Keep the worker running indefinitely
-        state = preprocess_smaller_state(env.reset())
+    env = gym_super_mario_bros.make(env_name, max_episode_steps=MAX_STEPS_ENV)
+    env = JoypadSpace(env, SIMPLE_MOVEMENT)
+    input_shape = preprocess_smaller_state(env.reset(), device).shape
+    local_model = ActorCritic(input_shape, n_actions).to(device)
+
+    with global_model_lock:
+        local_model.load_state_dict(global_model.state_dict())
+
+    while not stop_flag.value:
+        start_time = time.time()
+        state = preprocess_smaller_state(env.reset(), device)
         done = False
+        total_reward = 0
 
         while not done:
             states, actions, rewards, values = [], [], [], []
-            for _ in range(n_steps):
-                action_probs, value = local_model(state.unsqueeze(0))
+            for _ in range(N_STEPS):
+                state = state.unsqueeze(0).unsqueeze(0) # add batch and channel dimensions.
+                action_probs, value = local_model(state)
                 action = torch.multinomial(action_probs, 1).item()
 
-                next_state, reward, done, truncated, _ = env.step(action)
-                next_state = preprocess_smaller_state(next_state)
+                next_state, reward, done, truncated, info = env.step(action)
+                next_state = preprocess_smaller_state(next_state, device)
+                total_reward += reward
 
                 states.append(state)
                 actions.append(action)
@@ -106,47 +132,29 @@ def worker(global_model,
                 if done or truncated:
                     break
 
-            compute_advantages_and_update(global_model,
-                                          optimizer,
-                                          states,
-                                          actions,
-                                          rewards,
-                                          values,
-                                          gamma,
-                                          entropy_coef,
-                                          done)
+            with global_model_save_lock:
+                compute_advantages_and_update(global_model,
+                                                optimizer,
+                                                states,
+                                                actions,
+                                                rewards,
+                                                values,
+                                                done)
 
-            local_model.load_state_dict(global_model.state_dict())
+                local_model.load_state_dict(global_model.state_dict())
 
-        with lock:
+                
+
+        elapsed_time = time.time() - start_time
+
+        with global_model_lock:
             global_counter.value += 1
             current_episode = global_counter.value
+            record_info_for_worker(LOG_FILE_NAME, current_episode, worker_id, elapsed_time, total_reward, info)
+            print(f"Worker {worker_id} finished episode: {current_episode}. Time: {elapsed_time}. Total reward: {total_reward}.")
 
-        if current_episode % save_interval == 0:
-            with lock:
+        if current_episode % MODEL_SAVE_EPISODES == 0:
+            with global_model_lock:
                 save_model(global_model, current_episode)
-
-
-global_counter = mp.Value('i', 0)  # 'i' for integer
-lock = mp.Lock()
-
-env = gym_super_mario_bros.make('SuperMarioBros-v0')
-env = JoypadSpace(env, SIMPLE_MOVEMENT)
-input_shape = preprocess_smaller_state(env.reset()).shape
-n_actions = env.action_space.n
-
-global_model = ActorCritic(input_shape, n_actions)
-global_model.share_memory()
-
-optimizer = optim.Adam(global_model.parameters(), lr=1e-4)
-
-num_workers = mp.cpu_count()
-processes = []
-for worker_id in range(num_workers):
-    p = mp.Process(target=worker,
-                   args=(global_model, optimizer, worker_id, 'SuperMarioBros-v0', n_actions))
-    p.start()
-    processes.append(p)
-
-for p in processes:
-    p.join()
+    
+    print(f"Worker {worker_id} stopped.")

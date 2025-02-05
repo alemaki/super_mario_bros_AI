@@ -8,4 +8,5 @@ pip install nes_py
 pip install gym_super_mario_bros
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 pip install matplotlib
+pip install keyboard
 ```
