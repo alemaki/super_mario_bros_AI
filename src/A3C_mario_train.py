@@ -20,6 +20,12 @@ if __name__ == "__main__":
     except RuntimeError:
         print("Multiprocessing context already set.")
 
+if __name__ == "__main__":
+    global_counter = mp.Value('i', -1)
+    global_model_lock = mp.Lock()
+    global_model_save_lock = mp.Lock()
+    stop_flag = mp.Value('b', False)
+
 # Define the save directory
 BASE_DIR = Path(__file__).resolve().parent
 SAVE_DIR = BASE_DIR / "a3c_simple_movement_models"
@@ -29,7 +35,8 @@ GAMMA = 0.9
 ENTROPY_COEF = 0.01
 MODEL_SAVE_EPISODES = 100
 N_STEPS = 20
-MAX_STEPS_ENV = 5000
+MAX_STEPS_ENV = 500
+
 
 if not os.path.exists(SAVE_DIR):
     os.makedirs(SAVE_DIR)
@@ -94,14 +101,17 @@ def worker(global_model,
            worker_id,
            env_name,
            n_actions,
+           global_counter,
+           global_model_lock,
+           global_model_save_lock,
            stop_flag):
-    
-    print(f"Worker {worker_id} started.")
 
     env = gym_super_mario_bros.make(env_name, max_episode_steps=MAX_STEPS_ENV)
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
     input_shape = preprocess_smaller_state(env.reset(), device).shape
     local_model = ActorCritic(input_shape, n_actions).to(device)
+
+    print(f"Worker {worker_id} started.")
 
     with global_model_lock:
         local_model.load_state_dict(global_model.state_dict())
@@ -110,9 +120,11 @@ def worker(global_model,
         start_time = time.time()
         state = preprocess_smaller_state(env.reset(), device)
         done = False
+        truncated = False
         total_reward = 0
 
-        while not done:
+        while not done and not truncated:
+            #print(f"Worker {worker_id} calls")
             states, actions, rewards, values = [], [], [], []
             for _ in range(N_STEPS):
                 state = state.unsqueeze(0).unsqueeze(0) # add batch and channel dimensions.
@@ -159,13 +171,9 @@ def worker(global_model,
     
     print(f"Worker {worker_id} stopped.")
 
-
-global_counter = mp.Value('i', 0)
-global_model_lock = mp.Lock()
-global_model_save_lock = mp.Lock()
-stop_flag = mp.Value('b', False)
-
 if __name__ == "__main__":
+    print("Main thread started")
+
     env = gym_super_mario_bros.make('SuperMarioBros-v0')
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
     input_shape = preprocess_smaller_state(env.reset(), device).shape
@@ -176,7 +184,7 @@ if __name__ == "__main__":
 
     optimizer = optim.Adam(global_model.parameters(), lr=LEARNING_RATE)
 
-    num_workers = mp.cpu_count()
+    num_workers = 5 #mp.cpu_count() - 8
     processes = []
     for worker_id in range(num_workers):
         p = mp.Process(target=worker,
@@ -185,6 +193,9 @@ if __name__ == "__main__":
                             worker_id,
                             'SuperMarioBros-v0',
                             n_actions,
+                            global_counter,
+                            global_model_lock,
+                            global_model_save_lock,
                             stop_flag))
         p.start()
         processes.append(p)
