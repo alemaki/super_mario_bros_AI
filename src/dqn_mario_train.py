@@ -14,7 +14,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 SAVE_DIR = BASE_DIR / "dqn_simple_movement_one_life_smaller_models"
 LOG_FILE_NAME = BASE_DIR / "dqn_simple_movement_one_life_smaller_models" / "episodes_log.log"
-START_MODEL_EPISODE = 4500
+START_MODEL_EPISODE = 9000
 LEARNING_RATE = 0.0005
 GAMMA = 0.9
 EPSILON_START = 1.0
@@ -24,7 +24,7 @@ EPSILON_UPDATE = 80
 BATCH_SIZE = 64
 MEMORY_SIZE = 80000 
 TARGET_UPDATE = 6000
-EPISODE_SAVE = 1000
+EPISODE_SAVE = 2000
 MAX_STEPS = 6000
 ONE_LIFE = True
 CHANNEL_MULTIPLIER = 1
