@@ -160,7 +160,7 @@ def worker(global_model,
         elapsed_time = time.time() - start_time
 
         with episode_count_lock:
-            global_counter += 1
+            global_counter.value += 1
             current_episode = global_counter.value
             record_info_for_worker(LOG_FILE_NAME, current_episode, worker_id, elapsed_time, total_reward, info)
             print(f"Worker {worker_id} finished episode: {current_episode}. Time: {elapsed_time:.2f}. Total reward: {total_reward}.")
