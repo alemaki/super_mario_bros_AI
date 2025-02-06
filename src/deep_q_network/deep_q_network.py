@@ -56,11 +56,11 @@ class DQN(nn.Module):
         batch = random.sample(memory, batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
 
-        states = torch.stack(states).to(device)  
-        next_states = torch.stack(next_states).to(device)
-        actions = torch.LongTensor(actions).to(device)
-        rewards = torch.FloatTensor(rewards).to(device)
-        dones = torch.FloatTensor(dones).to(device)
+        states = torch.stack(states) 
+        next_states = torch.stack(next_states)
+        actions = torch.tensor(actions, dtype=torch.long, device=device)
+        rewards = torch.tensor(rewards, dtype=torch.float32, device=device)
+        dones = torch.tensor(dones, dtype=torch.float32, device=device)
 
         q_values = self(states).gather(1, actions.unsqueeze(1)).squeeze(1)
         next_q_values = target_net(next_states).max(1)[0]
