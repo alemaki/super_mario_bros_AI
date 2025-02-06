@@ -54,7 +54,7 @@ epsilon = max(EPSILON_MIN, epsilon*(EPSILON_DECAY**(START_MODEL_EPISODE*MAX_STEP
 
 target_update_frames_left = TARGET_UPDATE
 
-for episode in range(START_MODEL_EPISODE + 1, 10000):
+for episode in range(START_MODEL_EPISODE + 1, EPISODE_STOP + 1):
     start_time = time.time()
     state = preprocess_smaller_state(env.reset(), device=device)
     state = state.unsqueeze(0).repeat(4, 1, 1)
@@ -107,9 +107,6 @@ for episode in range(START_MODEL_EPISODE + 1, 10000):
 
     if episode % EPISODE_SAVE == 0:
         save_dqn_model(episode, policy_net, SAVE_DIR)
-    
-    if episode == EPISODE_STOP:
-        break
 
 
 env.close()
