@@ -22,8 +22,8 @@ if __name__ == "__main__":
 
 if __name__ == "__main__":
     global_counter = mp.Value('i', -1)
+    episode_count_lock = mp.Lock()
     global_model_lock = mp.Lock()
-    global_model_save_lock = mp.Lock()
     stop_flag = mp.Value('b', False)
 
 # Define the save directory
@@ -61,10 +61,10 @@ def compute_advantages_and_update(
         done = False):
 
 
-    states = torch.stack(states).squeeze(dim=1).to(device)
-    actions = torch.LongTensor(actions).to(device)
-    rewards = torch.FloatTensor(rewards).to(device)
-    values = torch.stack(values).squeeze().to(device)
+    states = torch.stack(states).squeeze(dim=1)  
+    actions = torch.tensor(actions, dtype=torch.long, device=device)  
+    rewards = torch.tensor(rewards, dtype=torch.float32, device=device)  
+    values = torch.stack(values).squeeze().to(device)  
 
     R = 0
 
@@ -102,8 +102,8 @@ def worker(global_model,
            env_name,
            n_actions,
            global_counter,
+           episode_count_lock,
            global_model_lock,
-           global_model_save_lock,
            stop_flag):
 
     env = gym_super_mario_bros.make(env_name, max_episode_steps=MAX_STEPS_ENV)
@@ -144,7 +144,7 @@ def worker(global_model,
                 if done or truncated:
                     break
 
-            with global_model_save_lock:
+            with global_model_lock:
                 compute_advantages_and_update(global_model,
                                                 optimizer,
                                                 states,
@@ -159,8 +159,8 @@ def worker(global_model,
 
         elapsed_time = time.time() - start_time
 
-        with global_model_lock:
-            global_counter.value += 1
+        with episode_count_lock:
+            global_counter += 1
             current_episode = global_counter.value
             record_info_for_worker(LOG_FILE_NAME, current_episode, worker_id, elapsed_time, total_reward, info)
             print(f"Worker {worker_id} finished episode: {current_episode}. Time: {elapsed_time:.2f}. Total reward: {total_reward}.")
@@ -194,8 +194,8 @@ if __name__ == "__main__":
                             'SuperMarioBros-v0',
                             n_actions,
                             global_counter,
+                            episode_count_lock,
                             global_model_lock,
-                            global_model_save_lock,
                             stop_flag))
         p.start()
         processes.append(p)
