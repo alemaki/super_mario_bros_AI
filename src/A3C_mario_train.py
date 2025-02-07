@@ -1,6 +1,7 @@
 import torch
 import torch.optim as optim
 import torch.multiprocessing as mp
+import torch.nn.functional as F
 import gym_super_mario_bros
 from nes_py.wrappers import JoypadSpace
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
@@ -37,6 +38,7 @@ ENTROPY_COEF = 0.01
 MODEL_SAVE_EPISODES = 1000
 N_STEPS = 20
 MAX_STEPS_ENV = 5000
+MAX_EPISODES = 1
 
 
 if not os.path.exists(SAVE_DIR):
@@ -52,42 +54,46 @@ def load_model(global_model, episode, save_dir=SAVE_DIR):
     global_model.load_state_dict(torch.load(model_path))
     print(f"Model loaded from episode {episode} from {model_path}")
 
+
 def compute_advantages_and_update(
         global_model: ActorCritic,
+        local_model: ActorCritic,
         optimizer,
         states,
         actions,
         rewards,
-        values,
-        done = False):
+        next_states,  # bootstrapping
+        done=False):
 
+    states = torch.stack(states).squeeze(dim=1).to(device)
+    next_states = torch.stack(next_states).squeeze(dim=1).to(device)
+    actions = torch.tensor(actions, dtype=torch.long, device=device)
+    rewards = torch.tensor(rewards, dtype=torch.float32, device=device)
 
-    states = torch.stack(states).squeeze(dim=1)  
-    actions = torch.tensor(actions, dtype=torch.long, device=device)  
-    rewards = torch.tensor(rewards, dtype=torch.float32, device=device)  
-    values = torch.stack(values).squeeze().to(device)  
+    with torch.no_grad():
+        _, current_values = global_model(states)
+    current_values = current_values.squeeze()
 
-    R = 0
-
+    R = torch.tensor(0.0, dtype=torch.float32, device=device)
     if not done:
-        _, next_value = global_model(states[-1].unsqueeze(0))
-        R = next_value.item()
-    returns = []
+        next_state_tensor = next_states[-1]
+        with torch.no_grad():
+            _, bootstrap_value = global_model(next_state_tensor.unsqueeze(0).unsqueeze(0))
+        R = bootstrap_value.squeeze()
 
+    returns = []
     for r in reversed(rewards):
         R = r + GAMMA * R
         returns.insert(0, R)
-    returns = torch.tensor(returns, dtype=torch.float32).to(device)
+    returns = torch.stack(returns).to(device)
 
-    advantages = returns - values
-
+    advantages = returns - current_values
 
     action_probs, _ = global_model(states)
     log_probs = torch.log(action_probs.gather(1, actions.unsqueeze(1)))
+
     policy_loss = -(log_probs * advantages.detach()).mean()
-
-    value_loss = 0.5 * (returns - values).pow(2).mean()
-
+    value_loss = 0.5 * (returns - current_values).pow(2).mean()
     entropy = -(action_probs * torch.log(action_probs)).sum(dim=1).mean()
     entropy_loss = -ENTROPY_COEF * entropy
 
@@ -95,10 +101,25 @@ def compute_advantages_and_update(
 
     optimizer.zero_grad()
     total_loss.backward()
+    torch.nn.utils.clip_grad_norm_(global_model.parameters(), max_norm=40)
     optimizer.step()
+    
+    
+    for name, param in global_model.named_parameters():
+        if param.grad is not None:
+            print(f"global_model {name} gradient norm: {param.grad.norm().item()}")
+        else:
+            print(f"global_model {name} gradient norm: {None}")
+
+    for name, param in local_model.named_parameters():
+        if param.grad is not None:
+            print(f"local_model {name} gradient norm: {param.grad.norm().item()}")
+        else:
+            print(f"local_model {name} gradient norm: {None}")
+
+    local_model.load_state_dict(global_model.state_dict())
 
 def worker(global_model,
-           optimizer,
            worker_id,
            env_name,
            n_actions,
@@ -111,13 +132,20 @@ def worker(global_model,
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
     input_shape = preprocess_smaller_state(env.reset(), device).shape
     local_model = ActorCritic(input_shape, n_actions).to(device)
+    local_model.train()
+
+    optimizer = optim.Adam(global_model.parameters(), lr=LEARNING_RATE)
+
+    old_state_dict = {}
+    for key in global_model.state_dict():
+        old_state_dict[key] = global_model.state_dict()[key].clone()
 
     print(f"Worker {worker_id} started.")
 
     with global_model_lock:
         local_model.load_state_dict(global_model.state_dict())
 
-    while not stop_flag.value:
+    while not stop_flag.value and global_counter.value <= MAX_EPISODES:
         start_time = time.time()
         state = preprocess_smaller_state(env.reset(), device)
         done = False
@@ -127,11 +155,12 @@ def worker(global_model,
 
         while not done and not truncated:
             #print(f"Worker {worker_id} calls")
-            states, actions, rewards, values = [], [], [], []
+            states, actions, rewards, next_states = [], [], [], []
             for _ in range(N_STEPS):
                 env.render()
-                state = state.unsqueeze(0).unsqueeze(0) # add batch and channel dimensions.
-                action_probs, value = local_model(state)
+                state = state.unsqueeze(0).unsqueeze(0) # add batch and channel dimensions.   
+                with torch.no_grad():
+                    action_probs, value = local_model(state)
                 action = torch.multinomial(action_probs, 1).item()
 
                 next_state, reward, done, truncated, info = env.step(action)
@@ -141,7 +170,7 @@ def worker(global_model,
                 states.append(state)
                 actions.append(action)
                 rewards.append(reward)
-                values.append(value)
+                next_states.append(next_state)  # Store next_state for bootstrapping
 
                 state = next_state
                 if done or truncated:
@@ -149,14 +178,27 @@ def worker(global_model,
 
             with global_model_lock:
                 compute_advantages_and_update(global_model,
+                                              local_model,
                                                 optimizer,
                                                 states,
                                                 actions,
                                                 rewards,
-                                                values,
+                                                next_states,
                                                 done)
 
-                local_model.load_state_dict(global_model.state_dict())
+                new_state_dict = {}
+                for key in global_model.state_dict():
+                    new_state_dict[key] = global_model.state_dict()[key].clone()
+
+                for key in old_state_dict:
+                    if not (old_state_dict[key] == new_state_dict[key]).all():
+                        print('Diff in {}'.format(key))
+
+                if global_counter.value < 1:
+                    global_counter.value += 1
+                else:
+                    exit(0)
+
 
                 
 
@@ -186,15 +228,13 @@ if __name__ == "__main__":
     if LOAD_MODEL_EPISODE != -1:
         load_model(global_model, LOAD_MODEL_EPISODE, SAVE_DIR)
     global_model.share_memory()
-
-    optimizer = optim.Adam(global_model.parameters(), lr=LEARNING_RATE)
+    global_model.train()
 
     num_workers = 1 #mp.cpu_count() - 8
     processes = []
     for worker_id in range(num_workers):
         p = mp.Process(target=worker,
                     args=(global_model,
-                            optimizer,
                             worker_id,
                             'SuperMarioBros-v0',
                             n_actions,

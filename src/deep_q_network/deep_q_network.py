@@ -64,7 +64,7 @@ class DQN(nn.Module):
 
         q_values = self(states).gather(1, actions.unsqueeze(1)).squeeze(1)
         next_q_values = target_net(next_states).max(1)[0]
-        targets = rewards + gamma * next_q_values * (1 - dones)
+        targets = rewards + gamma * next_q_values
 
         loss: nn.MSELoss = nn.MSELoss()
         output = loss(q_values, targets)
