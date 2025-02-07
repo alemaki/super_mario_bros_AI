@@ -6,6 +6,7 @@ import gym_super_mario_bros
 from nes_py.wrappers import JoypadSpace
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from actor_critic.actor_critic import ActorCritic, device
+from actor_critic.shared_adam import SharedAdam
 from utils import preprocess_smaller_state, record_info_for_worker
 import os
 from pathlib import Path
@@ -31,7 +32,7 @@ if __name__ == "__main__":
 BASE_DIR = Path(__file__).resolve().parent
 SAVE_DIR = BASE_DIR / "a3c_simple_movement_models"
 LOG_FILE_NAME = BASE_DIR / "a3c_simple_movement_models" / "episodes_log.log"
-LOAD_MODEL_EPISODE = 7000
+LOAD_MODEL_EPISODE = -1
 LEARNING_RATE = 1e-4
 GAMMA = 0.9
 ENTROPY_COEF = 0.01
@@ -89,10 +90,11 @@ def compute_advantages_and_update(
 
     advantages = returns - current_values
 
-    action_probs, _ = global_model(states)
+    action_probs, values = global_model(states)
+          
     log_probs = torch.log(action_probs.gather(1, actions.unsqueeze(1)))
 
-    policy_loss = -(log_probs * advantages.detach()).mean()
+    policy_loss = -(log_probs * advantages).mean()
     value_loss = 0.5 * (returns - current_values).pow(2).mean()
     entropy = -(action_probs * torch.log(action_probs)).sum(dim=1).mean()
     entropy_loss = -ENTROPY_COEF * entropy
@@ -105,21 +107,22 @@ def compute_advantages_and_update(
     optimizer.step()
     
     
-    for name, param in global_model.named_parameters():
-        if param.grad is not None:
-            print(f"global_model {name} gradient norm: {param.grad.norm().item()}")
-        else:
-            print(f"global_model {name} gradient norm: {None}")
+    # for name, param in global_model.named_parameters():
+    #     if param.grad is not None:
+    #         print(f"global_model {name} gradient norm: {param.grad.norm().item()}")
+    #     else:
+    #         print(f"global_model {name} gradient norm: {None}")
 
-    for name, param in local_model.named_parameters():
-        if param.grad is not None:
-            print(f"local_model {name} gradient norm: {param.grad.norm().item()}")
-        else:
-            print(f"local_model {name} gradient norm: {None}")
+    # for name, param in local_model.named_parameters():
+    #     if param.grad is not None:
+    #         print(f"local_model {name} gradient norm: {param.grad.norm().item()}")
+    #     else:
+    #         print(f"local_model {name} gradient norm: {None}")
 
     local_model.load_state_dict(global_model.state_dict())
 
 def worker(global_model,
+           optimizer,
            worker_id,
            env_name,
            n_actions,
@@ -134,11 +137,9 @@ def worker(global_model,
     local_model = ActorCritic(input_shape, n_actions).to(device)
     local_model.train()
 
-    optimizer = optim.Adam(global_model.parameters(), lr=LEARNING_RATE)
-
-    old_state_dict = {}
-    for key in global_model.state_dict():
-        old_state_dict[key] = global_model.state_dict()[key].clone()
+    # old_state_dict = {}
+    # for key in global_model.state_dict():
+    #     old_state_dict[key] = global_model.state_dict()[key].clone()
 
     print(f"Worker {worker_id} started.")
 
@@ -186,18 +187,18 @@ def worker(global_model,
                                                 next_states,
                                                 done)
 
-                new_state_dict = {}
-                for key in global_model.state_dict():
-                    new_state_dict[key] = global_model.state_dict()[key].clone()
+                # new_state_dict = {}
+                # for key in global_model.state_dict():
+                #     new_state_dict[key] = global_model.state_dict()[key].clone()
 
-                for key in old_state_dict:
-                    if not (old_state_dict[key] == new_state_dict[key]).all():
-                        print('Diff in {}'.format(key))
+                # for key in old_state_dict:
+                #     if not (old_state_dict[key] == new_state_dict[key]).all():
+                #         print('Diff in {}'.format(key))
 
-                if global_counter.value < 1:
-                    global_counter.value += 1
-                else:
-                    exit(0)
+                # if global_counter.value < 1:
+                #     global_counter.value += 1
+                # else:
+                #     exit(0)
 
 
                 
@@ -230,20 +231,23 @@ if __name__ == "__main__":
     global_model.share_memory()
     global_model.train()
 
+    optimizer = torch.optim.Adam(global_model.parameters(), lr=LEARNING_RATE)
+
     num_workers = 1 #mp.cpu_count() - 8
     processes = []
     for worker_id in range(num_workers):
-        p = mp.Process(target=worker,
-                    args=(global_model,
+        #p = mp.Process(target=worker,
+                    worker(global_model,
+                          optimizer,
                             worker_id,
                             'SuperMarioBros-v0',
                             n_actions,
                             global_counter,
                             episode_count_lock,
                             global_model_lock,
-                            stop_flag))
-        p.start()
-        processes.append(p)
+                            stop_flag)
+        #p.start()
+        #processes.append(p)
 
 
     def signal_handler(sig, frame):
