@@ -30,12 +30,13 @@ if __name__ == "__main__":
 BASE_DIR = Path(__file__).resolve().parent
 SAVE_DIR = BASE_DIR / "a3c_simple_movement_models"
 LOG_FILE_NAME = BASE_DIR / "a3c_simple_movement_models" / "episodes_log.log"
+LOAD_MODEL_EPISODE = 7000
 LEARNING_RATE = 1e-4
 GAMMA = 0.9
 ENTROPY_COEF = 0.01
-MODEL_SAVE_EPISODES = 100
+MODEL_SAVE_EPISODES = 1000
 N_STEPS = 20
-MAX_STEPS_ENV = 500
+MAX_STEPS_ENV = 5000
 
 
 if not os.path.exists(SAVE_DIR):
@@ -122,11 +123,13 @@ def worker(global_model,
         done = False
         truncated = False
         total_reward = 0
+        estimated_reward = 0
 
         while not done and not truncated:
             #print(f"Worker {worker_id} calls")
             states, actions, rewards, values = [], [], [], []
             for _ in range(N_STEPS):
+                env.render()
                 state = state.unsqueeze(0).unsqueeze(0) # add batch and channel dimensions.
                 action_probs, value = local_model(state)
                 action = torch.multinomial(action_probs, 1).item()
@@ -134,7 +137,7 @@ def worker(global_model,
                 next_state, reward, done, truncated, info = env.step(action)
                 next_state = preprocess_smaller_state(next_state, device)
                 total_reward += reward
-
+                estimated_reward += value.item()
                 states.append(state)
                 actions.append(action)
                 rewards.append(reward)
@@ -163,7 +166,7 @@ def worker(global_model,
             global_counter.value += 1
             current_episode = global_counter.value
             record_info_for_worker(LOG_FILE_NAME, current_episode, worker_id, elapsed_time, total_reward, info)
-            print(f"Worker {worker_id} finished episode: {current_episode}. Time: {elapsed_time:.2f}. Total reward: {total_reward}.")
+            print(f"Worker {worker_id} finished episode: {current_episode}. Time: {elapsed_time:.2f}. Total reward: {total_reward}. Estimated reward: {estimated_reward}")
 
         if current_episode % MODEL_SAVE_EPISODES == 0:
             with global_model_lock:
@@ -180,11 +183,13 @@ if __name__ == "__main__":
     n_actions = env.action_space.n
 
     global_model = ActorCritic(input_shape, n_actions).to(device)
+    if LOAD_MODEL_EPISODE != -1:
+        load_model(global_model, LOAD_MODEL_EPISODE, SAVE_DIR)
     global_model.share_memory()
 
     optimizer = optim.Adam(global_model.parameters(), lr=LEARNING_RATE)
 
-    num_workers = 5 #mp.cpu_count() - 8
+    num_workers = 1 #mp.cpu_count() - 8
     processes = []
     for worker_id in range(num_workers):
         p = mp.Process(target=worker,
