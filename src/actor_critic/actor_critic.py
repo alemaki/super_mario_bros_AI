@@ -21,7 +21,10 @@ class ActorCritic(nn.Module):
             nn.LeakyReLU() if use_leaky_relu else nn.ReLU()
         )
 
-        self.actor = nn.Linear(512*channel_multiplier, n_actions)
+        self.actor = nn.Sequential(
+            nn.Linear(512*channel_multiplier, n_actions),
+            nn.Softmax(dim=-1)  # Add softmax here
+        )
         self.critic = nn.Linear(512*channel_multiplier, 1)
         
 
@@ -34,7 +37,7 @@ class ActorCritic(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.fc(x)
 
-        action_probs = F.softmax(self.actor(x), dim=-1) # Ensure probabilities sum to 1
+        action_probs = self.actor(x)
         state_value = self.critic(x)
 
         return action_probs, state_value

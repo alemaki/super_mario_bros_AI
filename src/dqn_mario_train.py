@@ -14,11 +14,11 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 SAVE_DIR = BASE_DIR / "dqn_simple_movement_one_life_smaller_models"
 LOG_FILE_NAME = BASE_DIR / "dqn_simple_movement_one_life_smaller_models" / "episodes_log.log"
-START_MODEL_EPISODE = 9000
+START_MODEL_EPISODE = 16000
 LEARNING_RATE = 0.0005
 GAMMA = 0.9
 EPSILON_START = 1.0
-EPSILON_MIN = 0.01
+EPSILON_MIN = 0.001
 EPSILON_DECAY = 0.9995
 EPSILON_UPDATE = 80
 BATCH_SIZE = 64
