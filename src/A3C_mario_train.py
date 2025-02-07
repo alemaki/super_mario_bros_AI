@@ -39,8 +39,8 @@ ENTROPY_COEF = 0.01
 MODEL_SAVE_EPISODES = 1000
 N_STEPS = 20
 MAX_STEPS_ENV = 5000
-MAX_EPISODES = 1
-
+MAX_EPISODES = 50000
+ONE_LIFE = True
 
 if not os.path.exists(SAVE_DIR):
     os.makedirs(SAVE_DIR)
@@ -153,12 +153,13 @@ def worker(global_model,
         truncated = False
         total_reward = 0
         estimated_reward = 0
+        remaining_lives = 2
 
         while not done and not truncated:
             #print(f"Worker {worker_id} calls")
             states, actions, rewards, next_states = [], [], [], []
             for _ in range(N_STEPS):
-                env.render()
+                #env.render()
                 state = state.unsqueeze(0).unsqueeze(0) # add batch and channel dimensions.   
                 with torch.no_grad():
                     action_probs, value = local_model(state)
@@ -166,6 +167,11 @@ def worker(global_model,
 
                 next_state, reward, done, truncated, info = env.step(action)
                 next_state = preprocess_smaller_state(next_state, device)
+
+                if remaining_lives > info['life']:
+                    remaining_lives-=1
+                    reward -= 50
+
                 total_reward += reward
                 estimated_reward += value.item()
                 states.append(state)
@@ -200,6 +206,9 @@ def worker(global_model,
                 # else:
                 #     exit(0)
 
+            if ONE_LIFE:
+                break
+
 
                 
 
@@ -231,13 +240,13 @@ if __name__ == "__main__":
     global_model.share_memory()
     global_model.train()
 
-    optimizer = torch.optim.Adam(global_model.parameters(), lr=LEARNING_RATE)
+    optimizer = SharedAdam(global_model.parameters(), lr=LEARNING_RATE)
 
-    num_workers = 1 #mp.cpu_count() - 8
+    num_workers = 8 #mp.cpu_count() - 8
     processes = []
     for worker_id in range(num_workers):
-        #p = mp.Process(target=worker,
-                    worker(global_model,
+        p = mp.Process(target=worker,
+                    args=(global_model,
                           optimizer,
                             worker_id,
                             'SuperMarioBros-v0',
@@ -245,9 +254,20 @@ if __name__ == "__main__":
                             global_counter,
                             episode_count_lock,
                             global_model_lock,
-                            stop_flag)
-        #p.start()
-        #processes.append(p)
+                            stop_flag))
+        p.start()
+        processes.append(p)
+        # worker(
+        #     global_model,
+        #     optimizer,
+        #     worker_id,
+        #     'SuperMarioBros-v0',
+        #     n_actions,
+        #     global_counter,
+        #     episode_count_lock,
+        #     global_model_lock,
+        #     stop_flag
+        # )
 
 
     def signal_handler(sig, frame):
