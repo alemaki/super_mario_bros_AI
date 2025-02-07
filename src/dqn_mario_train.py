@@ -61,6 +61,7 @@ for episode in range(START_MODEL_EPISODE + 1, EPISODE_STOP + 1):
 
     done = False
     total_reward = 0
+    remaining_lives = 2
 
     for frame in range(MAX_STEPS + 1):
         #env.render()
@@ -74,8 +75,9 @@ for episode in range(START_MODEL_EPISODE + 1, EPISODE_STOP + 1):
         next_state = preprocess_smaller_state(next_state, device=device)
         next_state = torch.cat((state[1:], next_state.unsqueeze(0)), dim=0)  # Update frame stack
 
-        if done or truncated: 
-            break
+        if remaining_lives > info['life']:
+            remeaining_lives = info['life']
+            reward-=50
         
         memory.append((state, action, reward, next_state, done))
         state = next_state
@@ -96,6 +98,9 @@ for episode in range(START_MODEL_EPISODE + 1, EPISODE_STOP + 1):
 
         if frame % EPSILON_UPDATE == 0:
             epsilon = max(EPSILON_MIN, epsilon*EPSILON_DECAY)
+
+        if done or truncated:
+            break
 
         if ONE_LIFE and info['life'] < 2:
             break

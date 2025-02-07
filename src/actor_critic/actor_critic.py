@@ -17,12 +17,13 @@ class ActorCritic(nn.Module):
             nn.LeakyReLU() if use_leaky_relu else nn.ReLU()
         )
         self.fc = nn.Sequential(
-            nn.Linear(self._feature_size(input_shape), 512),
+            nn.Linear(self._feature_size(input_shape), 512*channel_multiplier),
             nn.LeakyReLU() if use_leaky_relu else nn.ReLU()
         )
 
         self.actor = nn.Linear(512*channel_multiplier, n_actions)
         self.critic = nn.Linear(512*channel_multiplier, 1)
+        
 
     def _feature_size(self, shape):
         with torch.no_grad():
