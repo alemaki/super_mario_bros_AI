@@ -57,45 +57,39 @@ def load_model(global_model, episode, save_dir=SAVE_DIR):
 
 
 def compute_advantages_and_update(
-        global_model: ActorCritic,
-        local_model: ActorCritic,
+        global_model,
+        local_model,
         optimizer,
         states,
         actions,
         rewards,
-        next_states,  # bootstrapping
-        done=False):
+        next_states,
+        done,
+        global_model_lock):
 
+    # Compute loss on LOCAL model
     states = torch.stack(states).squeeze(dim=1).to(device)
-    next_states = torch.stack(next_states).squeeze(dim=1).to(device)
     actions = torch.tensor(actions, dtype=torch.long, device=device)
     rewards = torch.tensor(rewards, dtype=torch.float32, device=device)
 
-    with torch.no_grad():
-        _, current_values = global_model(states)
-    current_values = current_values.squeeze()
+    # Forward pass with LOCAL model
+    action_probs, values = local_model(states)
+    values = values.squeeze()
 
-    R = torch.tensor(0.0, dtype=torch.float32, device=device)
-    if not done:
-        next_state_tensor = next_states[-1]
-        with torch.no_grad():
-            _, bootstrap_value = global_model(next_state_tensor.unsqueeze(0).unsqueeze(0))
-        R = bootstrap_value.squeeze()
-
+    # Compute returns and advantages (as before)
+    R = 0.0 if done else local_model(next_states[-1].unsqueeze(0).unsqueeze(0))[1].item()
     returns = []
     for r in reversed(rewards):
         R = r + GAMMA * R
         returns.insert(0, R)
-    returns = torch.stack(returns).to(device)
+    returns = torch.tensor(returns, device=device)
 
-    advantages = returns - current_values
+    advantages = returns - values
 
-    action_probs, values = global_model(states)
-          
+    # Loss calculation
     log_probs = torch.log(action_probs.gather(1, actions.unsqueeze(1)))
-
-    policy_loss = -(log_probs * advantages).mean()
-    value_loss = 0.5 * (returns - current_values).pow(2).mean()
+    policy_loss = -(log_probs * advantages.detach()).mean()
+    value_loss = 0.5 * (returns - values).pow(2).mean()
     entropy = -(action_probs * torch.log(action_probs)).sum(dim=1).mean()
     entropy_loss = -ENTROPY_COEF * entropy
 
@@ -103,8 +97,19 @@ def compute_advantages_and_update(
 
     optimizer.zero_grad()
     total_loss.backward()
-    torch.nn.utils.clip_grad_norm_(global_model.parameters(), max_norm=40)
-    optimizer.step()
+
+    torch.nn.utils.clip_grad_norm_(local_model.parameters(), 40)
+
+    with global_model_lock:
+        for local_param, global_param in zip(local_model.parameters(), 
+                                           global_model.parameters()):
+            if global_param.grad is None: 
+                global_param.grad = torch.zeros_like(global_param.data)
+            global_param.grad.data.copy_(local_param.grad.data)
+
+        optimizer.step()
+
+        local_model.load_state_dict(global_model.state_dict())
     
     
     # for name, param in global_model.named_parameters():
@@ -118,8 +123,6 @@ def compute_advantages_and_update(
     #         print(f"local_model {name} gradient norm: {param.grad.norm().item()}")
     #     else:
     #         print(f"local_model {name} gradient norm: {None}")
-
-    local_model.load_state_dict(global_model.state_dict())
 
 def worker(global_model,
            optimizer,
@@ -159,7 +162,7 @@ def worker(global_model,
             #print(f"Worker {worker_id} calls")
             states, actions, rewards, next_states = [], [], [], []
             for _ in range(N_STEPS):
-                #env.render()
+                env.render()
                 state = state.unsqueeze(0).unsqueeze(0) # add batch and channel dimensions.   
                 with torch.no_grad():
                     action_probs, value = local_model(state)
@@ -183,15 +186,16 @@ def worker(global_model,
                 if done or truncated:
                     break
 
-            with global_model_lock:
-                compute_advantages_and_update(global_model,
-                                              local_model,
-                                                optimizer,
-                                                states,
-                                                actions,
-                                                rewards,
-                                                next_states,
-                                                done)
+            
+            compute_advantages_and_update(global_model,
+                                            local_model,
+                                            optimizer,
+                                            states,
+                                            actions,
+                                            rewards,
+                                            next_states,
+                                            done,
+                                            global_model_lock)
 
                 # new_state_dict = {}
                 # for key in global_model.state_dict():
@@ -206,7 +210,7 @@ def worker(global_model,
                 # else:
                 #     exit(0)
 
-            if ONE_LIFE:
+            if ONE_LIFE and remaining_lives <= 1:
                 break
 
 
@@ -257,17 +261,6 @@ if __name__ == "__main__":
                             stop_flag))
         p.start()
         processes.append(p)
-        # worker(
-        #     global_model,
-        #     optimizer,
-        #     worker_id,
-        #     'SuperMarioBros-v0',
-        #     n_actions,
-        #     global_counter,
-        #     episode_count_lock,
-        #     global_model_lock,
-        #     stop_flag
-        # )
 
 
     def signal_handler(sig, frame):
