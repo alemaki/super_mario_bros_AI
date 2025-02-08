@@ -34,10 +34,10 @@ SAVE_DIR = BASE_DIR / "a3c_simple_movement_models"
 LOG_FILE_NAME = BASE_DIR / "a3c_simple_movement_models" / "episodes_log.log"
 LOAD_MODEL_EPISODE = -1
 LEARNING_RATE = 1e-4
-GAMMA = 0.9
-ENTROPY_COEF = 0.01
+GAMMA = 0.99
+ENTROPY_COEF = 0.05
 MODEL_SAVE_EPISODES = 1000
-N_STEPS = 20
+N_STEPS = 10
 MAX_STEPS_ENV = 5000
 MAX_EPISODES = 50000
 ONE_LIFE = True
@@ -137,12 +137,12 @@ def worker(global_model,
     env = gym_super_mario_bros.make(env_name, max_episode_steps=MAX_STEPS_ENV)
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
     input_shape = preprocess_smaller_state(env.reset(), device).shape
-    local_model = ActorCritic(input_shape, n_actions).to(device)
+    local_model = ActorCritic(input_shape, n_actions, True, 2).to(device)
     local_model.train()
 
-    # old_state_dict = {}
-    # for key in global_model.state_dict():
-    #     old_state_dict[key] = global_model.state_dict()[key].clone()
+    old_state_dict = {}
+    for key in global_model.state_dict():
+        old_state_dict[key] = global_model.state_dict()[key].clone()
 
     print(f"Worker {worker_id} started.")
 
@@ -197,13 +197,13 @@ def worker(global_model,
                                             done,
                                             global_model_lock)
 
-                # new_state_dict = {}
-                # for key in global_model.state_dict():
-                #     new_state_dict[key] = global_model.state_dict()[key].clone()
+            new_state_dict = {}
+            for key in global_model.state_dict():
+                new_state_dict[key] = global_model.state_dict()[key].clone()
 
-                # for key in old_state_dict:
-                #     if not (old_state_dict[key] == new_state_dict[key]).all():
-                #         print('Diff in {}'.format(key))
+            for key in old_state_dict:
+                if not (old_state_dict[key] == new_state_dict[key]).all():
+                    print('Diff in {}'.format(key))
 
                 # if global_counter.value < 1:
                 #     global_counter.value += 1
@@ -238,7 +238,7 @@ if __name__ == "__main__":
     input_shape = preprocess_smaller_state(env.reset(), device).shape
     n_actions = env.action_space.n
 
-    global_model = ActorCritic(input_shape, n_actions).to(device)
+    global_model = ActorCritic(input_shape, n_actions, True, 2).to(device)
     if LOAD_MODEL_EPISODE != -1:
         load_model(global_model, LOAD_MODEL_EPISODE, SAVE_DIR)
     global_model.share_memory()
