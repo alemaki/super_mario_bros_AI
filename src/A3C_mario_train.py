@@ -30,8 +30,8 @@ if __name__ == "__main__":
 
 # Define the save directory
 BASE_DIR = Path(__file__).resolve().parent
-SAVE_DIR = BASE_DIR / "a3c_simple_movement_models"
-LOG_FILE_NAME = BASE_DIR / "a3c_simple_movement_models" / "episodes_log.log"
+SAVE_DIR = BASE_DIR / "a2c_simple_movement_models"
+LOG_FILE_NAME = BASE_DIR / "a2c_simple_movement_models" / "episodes_log.log"
 LOAD_MODEL_EPISODE = -1
 LEARNING_RATE = 1e-4
 GAMMA = 0.99
@@ -77,7 +77,7 @@ def compute_advantages_and_update(
     values = values.squeeze()
 
     # Compute returns and advantages (as before)
-    R = 0.0 if done else local_model(next_states[-1].unsqueeze(0).unsqueeze(0))[1].item()
+    R = local_model(next_states[-1].unsqueeze(0).unsqueeze(0))[1].item()
     returns = []
     for r in reversed(rewards):
         R = r + GAMMA * R
@@ -140,16 +140,15 @@ def worker(global_model,
     local_model = ActorCritic(input_shape, n_actions, True, 2).to(device)
     local_model.train()
 
-    old_state_dict = {}
-    for key in global_model.state_dict():
-        old_state_dict[key] = global_model.state_dict()[key].clone()
-
     print(f"Worker {worker_id} started.")
 
     with global_model_lock:
         local_model.load_state_dict(global_model.state_dict())
 
     while not stop_flag.value and global_counter.value <= MAX_EPISODES:
+        # old_state_dict = {}
+        # for key in global_model.state_dict():
+        #     old_state_dict[key] = global_model.state_dict()[key].clone()
         start_time = time.time()
         state = preprocess_smaller_state(env.reset(), device)
         done = False
@@ -162,10 +161,11 @@ def worker(global_model,
             #print(f"Worker {worker_id} calls")
             states, actions, rewards, next_states = [], [], [], []
             for _ in range(N_STEPS):
-                #env.render()
+                env.render()
                 state = state.unsqueeze(0).unsqueeze(0) # add batch and channel dimensions.   
                 with torch.no_grad():
                     action_probs, value = local_model(state)
+                    action_probs = torch.clamp(action_probs, 0, 1)
                 action = torch.multinomial(action_probs, 1).item()
 
                 next_state, reward, done, truncated, info = env.step(action)
@@ -173,7 +173,7 @@ def worker(global_model,
 
                 if remaining_lives > info['life']:
                     remaining_lives-=1
-                    reward -= 50
+                    reward -= 100
 
                 total_reward += reward
                 estimated_reward += value.item()
@@ -198,12 +198,12 @@ def worker(global_model,
                                             global_model_lock)
 
             new_state_dict = {}
-            for key in global_model.state_dict():
-                new_state_dict[key] = global_model.state_dict()[key].clone()
+            # for key in global_model.state_dict():
+            #     new_state_dict[key] = global_model.state_dict()[key].clone()
 
-            for key in old_state_dict:
-                if not (old_state_dict[key] == new_state_dict[key]).all():
-                    print('Diff in {}'.format(key))
+            # for key in old_state_dict:
+            #     if not (old_state_dict[key] == new_state_dict[key]).all():
+                    # print('Diff in {}'.format(key))
 
                 # if global_counter.value < 1:
                 #     global_counter.value += 1
@@ -248,20 +248,31 @@ if __name__ == "__main__":
 
     num_workers = 8 #mp.cpu_count() - 8
     processes = []
-    for worker_id in range(num_workers):
-        p = mp.Process(target=worker,
-                    args=(global_model,
-                          optimizer,
-                            worker_id,
-                            'SuperMarioBros-v0',
-                            n_actions,
-                            global_counter,
-                            episode_count_lock,
-                            global_model_lock,
-                            stop_flag))
-        p.start()
-        processes.append(p)
+    # for worker_id in range(num_workers):
+    #     p = mp.Process(target=worker,
+    #                 args=(global_model,
+    #                       optimizer,
+    #                         worker_id,
+    #                         'SuperMarioBros-v0',
+    #                         n_actions,
+    #                         global_counter,
+    #                         episode_count_lock,
+    #                         global_model_lock,
+    #                         stop_flag))
+    #     p.start()
+    #     processes.append(p)
 
+
+    
+    worker(global_model,
+            optimizer,
+            1,
+            'SuperMarioBros-v0',
+            n_actions,
+            global_counter,
+            episode_count_lock,
+            global_model_lock,
+            stop_flag)
 
     def signal_handler(sig, frame):
         print("\nReceived termination signal. Stopping workers...")
@@ -287,4 +298,5 @@ if __name__ == "__main__":
 
     # Keep the main process alive
     while not stop_flag.value:
+        #sleep(1)
         pass
