@@ -165,7 +165,6 @@ def worker(global_model,
                 state = state.unsqueeze(0).unsqueeze(0) # add batch and channel dimensions.   
                 with torch.no_grad():
                     action_probs, value = local_model(state)
-                    action_probs = torch.clamp(action_probs, 0, 1)
                 action = torch.multinomial(action_probs, 1).item()
 
                 next_state, reward, done, truncated, info = env.step(action)
