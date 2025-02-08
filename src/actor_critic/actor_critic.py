@@ -37,7 +37,11 @@ class ActorCritic(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.fc(x)
 
-        action_probs = self.actor(x)
+        # Stabilize softmax input
+        actor_output = self.actor[0](x)  # Get logits before softmax
+        actor_output = actor_output - torch.max(actor_output, dim=-1, keepdim=True).values  # Normalize
+        action_probs = self.actor[1](actor_output)  # Apply softmax
+
         state_value = self.critic(x)
 
         return action_probs, state_value
