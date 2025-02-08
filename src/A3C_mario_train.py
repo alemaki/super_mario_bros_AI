@@ -162,7 +162,7 @@ def worker(global_model,
             #print(f"Worker {worker_id} calls")
             states, actions, rewards, next_states = [], [], [], []
             for _ in range(N_STEPS):
-                env.render()
+                #env.render()
                 state = state.unsqueeze(0).unsqueeze(0) # add batch and channel dimensions.   
                 with torch.no_grad():
                     action_probs, value = local_model(state)
