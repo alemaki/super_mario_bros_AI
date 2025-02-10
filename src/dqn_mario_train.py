@@ -8,16 +8,16 @@ from collections import deque
 import time 
 import os
 from deep_q_network.deep_q_network import DQN, device, save_dqn_model, load_dqn_models
-from utils import preprocess_smaller_state, record_info_for_episode
+from utils import preprocess_smaller_state, record_info_for_episode, get_reward
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-SAVE_DIR = BASE_DIR / "dqn_simple_movement_one_life_smaller_models"
-LOG_FILE_NAME = BASE_DIR / "dqn_simple_movement_one_life_smaller_models" / "episodes_log.log"
-START_MODEL_EPISODE = 16000
+SAVE_DIR = BASE_DIR / "dqn_simple_movement_one_life_action_steps_models"
+LOG_FILE_NAME = BASE_DIR / "dqn_simple_movement_one_life_action_steps_models" / "episodes_log.log"
+START_MODEL_EPISODE = -1
 LEARNING_RATE = 0.0005
 GAMMA = 0.9
-EPSILON_START = 1.0
+EPSILON_START = 0
 EPSILON_MIN = 0.001
 EPSILON_DECAY = 0.9995
 EPSILON_UPDATE = 80
@@ -29,6 +29,7 @@ MAX_STEPS = 6000
 ONE_LIFE = True
 CHANNEL_MULTIPLIER = 1
 EPISODE_STOP = 50000
+ACTION_STEPS = 4
 
 if not os.path.exists(SAVE_DIR):
     os.makedirs(SAVE_DIR)
@@ -36,7 +37,8 @@ if not os.path.exists(SAVE_DIR):
 env = gym_super_mario_bros.make('SuperMarioBros-v0', max_episode_steps=MAX_STEPS)
 env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
-input_shape = preprocess_smaller_state(env.reset(), device=device).unsqueeze(0).repeat(4, 1, 1).shape  # 4 stacked frames
+input_shape = preprocess_smaller_state(env.reset(), device=device).unsqueeze(0).repeat(ACTION_STEPS, 1, 1).shape
+image_shape =  preprocess_smaller_state(env.reset(), device=device).shape
 n_actions = env.action_space.n
 
 policy_net = DQN(input_shape, n_actions, True, CHANNEL_MULTIPLIER).to(device)
@@ -56,32 +58,37 @@ target_update_frames_left = TARGET_UPDATE
 
 for episode in range(START_MODEL_EPISODE + 1, EPISODE_STOP + 1):
     start_time = time.time()
-    state = preprocess_smaller_state(env.reset(), device=device)
-    state = state.unsqueeze(0).repeat(4, 1, 1)
+    states = preprocess_smaller_state(env.reset(), device=device)
+    states = states.unsqueeze(0).repeat(ACTION_STEPS, 1, 1)
 
     done = False
     total_reward = 0
-    remaining_lives = 2
 
     for frame in range(MAX_STEPS + 1):
-        #env.render()
+        env.render()
         if np.random.rand() < epsilon:
             action = env.action_space.sample()
         else:
-            state_tensor = state.unsqueeze(0) # Add batch dimension
+            state_tensor = states.unsqueeze(0) # Add batch dimension
             action = policy_net(state_tensor).argmax(dim=1).item()
 
-        next_state, reward, done, truncated, info = env.step(action)
-        next_state = preprocess_smaller_state(next_state, device=device)
-        next_state = torch.cat((state[1:], next_state.unsqueeze(0)), dim=0)  # Update frame stack
 
-        if remaining_lives > info['life']:
-            remeaining_lives = info['life']
-            reward-=50
+        next_states = torch.empty((0, *image_shape), dtype=torch.float32).to(device)
+        steps_reward = 0
+        for step in range(ACTION_STEPS):
+            frame += 1
+            next_state, reward, done, truncated, info = env.step(action)
+            next_state = preprocess_smaller_state(next_state, device=device)
+            steps_reward += get_reward(info, reward)
+            next_states = torch.cat((next_states, next_state.unsqueeze(0)), dim=0)
+            if done:
+                while next_states.size < ACTION_STEPS:
+                    next_states = torch.cat((next_states, next_state.unsqueeze(0)), dim=0)
+                break
         
-        memory.append((state, action, reward, next_state, done))
-        state = next_state
-        total_reward += reward
+        memory.append((states, action, steps_reward, next_states, done))
+        states = next_states
+        total_reward += steps_reward
 
         # Training
         if len(memory) > BATCH_SIZE:
@@ -104,6 +111,14 @@ for episode in range(START_MODEL_EPISODE + 1, EPISODE_STOP + 1):
 
         if ONE_LIFE and info['life'] < 2:
             break
+    
+
+    # for name, param in policy_net.named_parameters():
+    #     if param.grad is not None:
+    #         print(f"policy network param {name} has gradient: {param.grad.norm().item()}")
+    #     else:
+    #         print(f"policy network param {name} is None")
+
 
     elapsed_time = time.time() - start_time
     print(f"Episode {episode}, Total Reward: {total_reward}, Time Elapsed: {elapsed_time:.2f} seconds, epsilon {epsilon}")

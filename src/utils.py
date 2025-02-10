@@ -17,6 +17,19 @@ def preprocess_smaller_state(state: np.ndarray, device) -> torch.Tensor:
     state = state[50:220:2, 30:190:2] #  less info
     return state / 255.0
 
+
+def get_reward( info: dict,
+                init_reward: int = 0,
+                remaining_lives: int = 2):
+    reward = init_reward
+    reward -= 0.1
+    if remaining_lives > info['life']:
+        remaining_lives-=1
+        reward -= 10
+
+    return reward
+
+
 def record_info_for_episode(file_name, episode, total_reward, time, level_data):
     if not os.path.exists(file_name):
         with open(file_name, mode='w', newline='') as file:
