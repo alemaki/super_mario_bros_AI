@@ -7,7 +7,7 @@ from nes_py.wrappers import JoypadSpace
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from actor_critic.actor_critic import ActorCritic, device
 from actor_critic.shared_adam import SharedAdam
-from utils import preprocess_smaller_state, record_info_for_worker
+from utils import preprocess_smaller_state, record_info_for_worker, get_reward
 import os
 from pathlib import Path
 import signal
@@ -98,7 +98,7 @@ def compute_advantages_and_update(
     optimizer.zero_grad()
     total_loss.backward()
 
-    torch.nn.utils.clip_grad_norm_(local_model.parameters(), 40)
+    torch.nn.utils.clip_grad_norm_(local_model.parameters(), 0.5)
 
     with global_model_lock:
         for local_param, global_param in zip(local_model.parameters(), 
@@ -155,7 +155,6 @@ def worker(global_model,
         truncated = False
         total_reward = 0
         estimated_reward = 0
-        remaining_lives = 2
 
         while not done and not truncated:
             #print(f"Worker {worker_id} calls")
@@ -170,9 +169,7 @@ def worker(global_model,
                 next_state, reward, done, truncated, info = env.step(action)
                 next_state = preprocess_smaller_state(next_state, device)
 
-                if remaining_lives > info['life']:
-                    remaining_lives-=1
-                    reward -= 100
+                reward = get_reward(info, reward)
 
                 total_reward += reward
                 estimated_reward += value.item()
@@ -196,20 +193,7 @@ def worker(global_model,
                                             done,
                                             global_model_lock)
 
-            new_state_dict = {}
-            # for key in global_model.state_dict():
-            #     new_state_dict[key] = global_model.state_dict()[key].clone()
-
-            # for key in old_state_dict:
-            #     if not (old_state_dict[key] == new_state_dict[key]).all():
-                    # print('Diff in {}'.format(key))
-
-                # if global_counter.value < 1:
-                #     global_counter.value += 1
-                # else:
-                #     exit(0)
-
-            if ONE_LIFE and remaining_lives <= 1:
+            if ONE_LIFE and info['life'] <= 1:
                 break
 
 
@@ -247,19 +231,19 @@ if __name__ == "__main__":
 
     num_workers = 8 #mp.cpu_count() - 8
     processes = []
-    # for worker_id in range(num_workers):
-    #     p = mp.Process(target=worker,
-    #                 args=(global_model,
-    #                       optimizer,
-    #                         worker_id,
-    #                         'SuperMarioBros-v0',
-    #                         n_actions,
-    #                         global_counter,
-    #                         episode_count_lock,
-    #                         global_model_lock,
-    #                         stop_flag))
-    #     p.start()
-    #     processes.append(p)
+    for worker_id in range(num_workers):
+        p = mp.Process(target=worker,
+                    args=(global_model,
+                          optimizer,
+                            worker_id,
+                            'SuperMarioBros-v0',
+                            n_actions,
+                            global_counter,
+                            episode_count_lock,
+                            global_model_lock,
+                            stop_flag))
+        p.start()
+        processes.append(p)
 
 
     
