@@ -68,9 +68,7 @@ def compute_advantages_and_update(
         global_model_lock):
 
     # Compute loss on LOCAL model
-    print(len(states), states[0].shape)
     states = torch.stack(states).squeeze(dim=1).to(device)
-    print(states.shape)
     actions = torch.tensor(actions, dtype=torch.long, device=device)
     rewards = torch.tensor(rewards, dtype=torch.float32, device=device)
 
@@ -179,11 +177,12 @@ def worker(global_model,
                 with torch.no_grad():
                     action_probs, value = local_model(state)
 
-                print(action_probs)
+                #print(action_probs)
                 action = torch.multinomial(action_probs, 1).item()
 
                 for _ in range(ACTION_STEPS):
                     state, reward, done, truncated, info = env.step(action)
+                    reward = get_reward(info, reward)
                     state = preprocess_smaller_state(state, device=device)
                     total_reward += reward
                     state = state.unsqueeze(0).unsqueeze(0)
@@ -197,7 +196,7 @@ def worker(global_model,
                             rewards.append(reward)
                         break
 
-                estimated_reward += value.item()
+                estimated_reward += value.item() / N_STEPS # the critic estimates the advantage. which is for n steps
 
                 if done or truncated:
                     break
