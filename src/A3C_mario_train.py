@@ -74,7 +74,6 @@ def compute_advantages_and_update(
     actions = torch.tensor(actions, dtype=torch.long, device=device)
     rewards = torch.tensor(rewards, dtype=torch.float32, device=device)
 
-    # Forward pass with LOCAL model
     action_probs, values = local_model(states)
     values = values.squeeze()
 
@@ -88,7 +87,6 @@ def compute_advantages_and_update(
 
     advantages = returns - values
 
-    # Loss calculation
     log_probs = torch.log(action_probs.gather(1, actions.unsqueeze(1)))
     policy_loss = -(log_probs * advantages.detach()).mean()
     value_loss = 0.5 * (returns - values).pow(2).mean()
@@ -96,6 +94,20 @@ def compute_advantages_and_update(
     entropy_loss = -ENTROPY_COEF * entropy
 
     total_loss = policy_loss + value_loss + entropy_loss
+
+
+    # for name, param in global_model.named_parameters():
+    #     if param.grad is not None:
+    #         print(f"global_model {name} gradient norm: {param.grad.norm().item()}")
+    #     else:
+    #         print(f"global_model {name} gradient norm: {None}")
+
+    # for name, param in local_model.named_parameters():
+    #     if param.grad is not None:
+    #         print(f"local_model {name} gradient norm: {param.grad.norm().item()}")
+    #     else:
+    #         print(f"local_model {name} gradient norm: {None}")
+
 
     optimizer.zero_grad()
     total_loss.backward()
@@ -186,7 +198,6 @@ def worker(global_model,
                         break
 
                 estimated_reward += value.item()
-
 
                 if done or truncated:
                     break

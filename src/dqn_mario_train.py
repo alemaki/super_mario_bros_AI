@@ -14,18 +14,18 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 SAVE_DIR = BASE_DIR / "dqn_simple_movement_one_life_action_steps_models"
 LOG_FILE_NAME = BASE_DIR / "dqn_simple_movement_one_life_action_steps_models" / "episodes_log.log"
-START_MODEL_EPISODE = -1
+START_MODEL_EPISODE = 12000
 LEARNING_RATE = 0.0005
 GAMMA = 0.9
-EPSILON_START = 0
+EPSILON_START = 1.0
 EPSILON_MIN = 0.001
 EPSILON_DECAY = 0.9995
-EPSILON_UPDATE = 80
+EPSILON_UPDATE = 20
 BATCH_SIZE = 64
-MEMORY_SIZE = 60000 
+MEMORY_SIZE = 80000 
 TARGET_UPDATE = 6000
 EPISODE_SAVE = 2000
-MAX_STEPS = 6000
+MAX_STEPS = 8000
 ONE_LIFE = True
 CHANNEL_MULTIPLIER = 1
 EPISODE_STOP = 50000
@@ -52,7 +52,8 @@ optimizer = optim.Adam(policy_net.parameters(), lr=LEARNING_RATE)
 memory = deque(maxlen=MEMORY_SIZE)
 
 epsilon = EPSILON_START
-epsilon = max(EPSILON_MIN, epsilon*(EPSILON_DECAY**(START_MODEL_EPISODE*MAX_STEPS/EPSILON_UPDATE)))
+if START_MODEL_EPISODE != -1:
+    epsilon = max(EPSILON_MIN, epsilon*(EPSILON_DECAY**(START_MODEL_EPISODE*MAX_STEPS/EPSILON_UPDATE)))
 
 target_update_frames_left = TARGET_UPDATE
 
@@ -63,9 +64,10 @@ for episode in range(START_MODEL_EPISODE + 1, EPISODE_STOP + 1):
 
     done = False
     total_reward = 0
-
+    previous_x = 0
+    
     for frame in range(MAX_STEPS + 1):
-        env.render()
+        #env.render()
         if np.random.rand() < epsilon:
             action = env.action_space.sample()
         else:
@@ -79,7 +81,8 @@ for episode in range(START_MODEL_EPISODE + 1, EPISODE_STOP + 1):
             frame += 1
             next_state, reward, done, truncated, info = env.step(action)
             next_state = preprocess_smaller_state(next_state, device=device)
-            steps_reward += get_reward(info, reward)
+            steps_reward += get_reward(info, reward, previous_x = previous_x)
+            previous_x = info['x_pos']
             next_states = torch.cat((next_states, next_state.unsqueeze(0)), dim=0)
             if done:
                 while next_states.size < ACTION_STEPS:

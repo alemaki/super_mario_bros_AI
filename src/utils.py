@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import csv
 import os
+import math
 
 """Moves data to device, downsamples, crops, grayscales and normalises"""
 def preprocess_state(state: np.ndarray, device) -> torch.Tensor:
@@ -20,12 +21,16 @@ def preprocess_smaller_state(state: np.ndarray, device) -> torch.Tensor:
 
 def get_reward( info: dict,
                 init_reward: int = 0,
-                remaining_lives: int = 2):
+                remaining_lives: int = 2,
+                previous_x: int = None):
     reward = init_reward
-    reward -= 0.1
+    reward -= 0.1 # make it go fast
+    # if previous_x is not None and \
+    #     math.isclose(previous_x, info['pos_x']):
+    #     reward -= 0.1 # punish staying in one position
     if remaining_lives > info['life']:
-        remaining_lives-=1
-        reward -= 10
+        # remaining_lives -= 1
+        reward -= 15 # dying is forbidden
 
     return reward
 
