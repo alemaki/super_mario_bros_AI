@@ -37,7 +37,8 @@ LEARNING_RATE = 1e-4
 GAMMA = 0.99
 ENTROPY_COEF = 0.05
 MODEL_SAVE_EPISODES = 1000
-N_STEPS = 10
+N_STEPS = 12
+ACTION_STEPS = 4
 MAX_STEPS_ENV = 5000
 MAX_EPISODES = 50000
 ONE_LIFE = True
@@ -63,12 +64,13 @@ def compute_advantages_and_update(
         states,
         actions,
         rewards,
-        next_states,
         done,
         global_model_lock):
 
     # Compute loss on LOCAL model
+    print(len(states), states[0].shape)
     states = torch.stack(states).squeeze(dim=1).to(device)
+    print(states.shape)
     actions = torch.tensor(actions, dtype=torch.long, device=device)
     rewards = torch.tensor(rewards, dtype=torch.float32, device=device)
 
@@ -77,7 +79,7 @@ def compute_advantages_and_update(
     values = values.squeeze()
 
     # Compute returns and advantages (as before)
-    R = local_model(next_states[-1].unsqueeze(0).unsqueeze(0))[1].item()
+    R = local_model(states[-1].unsqueeze(0))[1].item()
     returns = []
     for r in reversed(rewards):
         R = r + GAMMA * R
@@ -155,30 +157,37 @@ def worker(global_model,
         truncated = False
         total_reward = 0
         estimated_reward = 0
-
+        state = state.unsqueeze(0).unsqueeze(0)
+    
         while not done and not truncated:
             #print(f"Worker {worker_id} calls")
-            states, actions, rewards, next_states = [], [], [], []
-            for _ in range(N_STEPS):
+            states, actions, rewards = [], [], []
+            for _ in range(N_STEPS//ACTION_STEPS):
                 env.render()
-                state = state.unsqueeze(0).unsqueeze(0) # add batch and channel dimensions.   
                 with torch.no_grad():
                     action_probs, value = local_model(state)
+
+                print(action_probs)
                 action = torch.multinomial(action_probs, 1).item()
 
-                next_state, reward, done, truncated, info = env.step(action)
-                next_state = preprocess_smaller_state(next_state, device)
+                for _ in range(ACTION_STEPS):
+                    state, reward, done, truncated, info = env.step(action)
+                    state = preprocess_smaller_state(state, device=device)
+                    total_reward += reward
+                    state = state.unsqueeze(0).unsqueeze(0)
+                    states.append(state)
+                    actions.append(action)
+                    rewards.append(reward)
+                    if done:
+                        while states.size < N_STEPS:
+                            states.append(state)
+                            actions.append(action)
+                            rewards.append(reward)
+                        break
 
-                reward = get_reward(info, reward)
-
-                total_reward += reward
                 estimated_reward += value.item()
-                states.append(state)
-                actions.append(action)
-                rewards.append(reward)
-                next_states.append(next_state)  # Store next_state for bootstrapping
 
-                state = next_state
+
                 if done or truncated:
                     break
 
@@ -189,7 +198,6 @@ def worker(global_model,
                                             states,
                                             actions,
                                             rewards,
-                                            next_states,
                                             done,
                                             global_model_lock)
 
@@ -229,21 +237,21 @@ if __name__ == "__main__":
 
     optimizer = SharedAdam(global_model.parameters(), lr=LEARNING_RATE)
 
-    num_workers = 8 #mp.cpu_count() - 8
-    processes = []
-    for worker_id in range(num_workers):
-        p = mp.Process(target=worker,
-                    args=(global_model,
-                          optimizer,
-                            worker_id,
-                            'SuperMarioBros-v0',
-                            n_actions,
-                            global_counter,
-                            episode_count_lock,
-                            global_model_lock,
-                            stop_flag))
-        p.start()
-        processes.append(p)
+    # num_workers = 8 #mp.cpu_count() - 8
+    # processes = []
+    # for worker_id in range(num_workers):
+    #     p = mp.Process(target=worker,
+    #                 args=(global_model,
+    #                       optimizer,
+    #                         worker_id,
+    #                         'SuperMarioBros-v0',
+    #                         n_actions,
+    #                         global_counter,
+    #                         episode_count_lock,
+    #                         global_model_lock,
+    #                         stop_flag))
+    #     p.start()
+    #     processes.append(p)
 
 
     
