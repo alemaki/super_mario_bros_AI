@@ -6,7 +6,26 @@ Required packages:
 ```bash
 pip install nes_py
 pip install gym_super_mario_bros
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install matplotlib
 pip install keyboard
 ```
+
+test with src\test\gpu_test.py
+
+
+user might get an error with the gym enviorment for mario:
+File "**\site-packages\gym\wrappers\time_limit.py", line 50, in step
+observation, reward, terminated, truncated, info = self.env.step(action)
+ValueError: not enough values to unpack (expected 5, got 4)
+
+
+
+just edit the error line into:
+observation, reward, terminated, info = self.env.step(action)
+self._elapsed_steps += 1
+truncated = False
+if self._elapsed_steps >= self._max_episode_steps:
+    truncated = True
+
+return observation, reward, terminated, truncated, info
