@@ -23,7 +23,6 @@ class ActorCritic(nn.Module):
 
         self.actor = nn.Sequential(
             nn.Linear(512*channel_multiplier, n_actions),
-            nn.Softmax(dim=-1)  # Add softmax here
         )
         self.critic = nn.Linear(512*channel_multiplier, 1)
         
@@ -33,15 +32,28 @@ class ActorCritic(nn.Module):
             return self.conv(torch.zeros(1, *shape)).view(1, -1).size(1)
 
     def forward(self, x):
+        if x.isnan().any():
+            print(x, "shape")
         x = self.conv(x)
+        if x.isnan().any():
+            print(x, "ater conv")
         x = x.view(x.size(0), -1)
         x = self.fc(x)
+        if x.isnan().any():
+            print(x, "ater fc")
 
         # Stabilize softmax input
         actor_output = self.actor[0](x)  # Get logits before softmax
+        
+        if actor_output.isnan().any():
+            print(x, "actor output")
         actor_output = actor_output - torch.max(actor_output, dim=-1, keepdim=True).values  # Normalize
-        action_probs = self.actor[1](actor_output)  # Apply softmax
+        probs = torch.nn.functional.softmax(actor_output / 2.0, dim=-1)
+        if actor_output.isnan().any():
+            print(x, "action probs")
 
         state_value = self.critic(x)
+        if x.isnan().any():
+            print(x, "state value")
 
-        return action_probs, state_value
+        return probs, state_value
