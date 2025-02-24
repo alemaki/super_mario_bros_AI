@@ -15,6 +15,8 @@ import sys
 from pynput import keyboard
 import time
 
+# Currently deprecated.
+
 # Set the multiprocessing start method (only once)
 if __name__ == "__main__":
     try:
@@ -127,8 +129,8 @@ def compute_advantages_and_update(
     # for name, param in global_model.named_parameters():
     #     if param.grad is not None:
     #         print(f"global_model {name} gradient norm: {param.grad.norm().item()}")
-    #     else:
     #         print(f"global_model {name} gradient norm: {None}")
+    #     else:
 
     # for name, param in local_model.named_parameters():
     #     if param.grad is not None:

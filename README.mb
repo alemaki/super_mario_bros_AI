@@ -9,6 +9,7 @@ pip install gym_super_mario_bros
 pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install matplotlib
 pip install keyboard
+pip install "numpy<2.0.0"
 ```
 
 test with src\test\gpu_test.py

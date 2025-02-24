@@ -67,7 +67,7 @@ for episode in range(START_MODEL_EPISODE + 1, EPISODE_STOP + 1):
     previous_x = 0
     
     for frame in range(MAX_STEPS + 1):
-        #env.render()
+        env.render()
         if np.random.rand() < epsilon:
             action = env.action_space.sample()
         else:

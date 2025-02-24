@@ -23,13 +23,15 @@ def get_reward( info: dict,
                 init_reward: int = 0,
                 remaining_lives: int = 2,
                 previous_x: int = None):
+
     reward = init_reward
-    reward -= 0.1 # make it go fast
-    # if previous_x is not None and \
-    #     math.isclose(previous_x, info['pos_x']):
-    #     reward -= 0.1 # punish staying in one position
+
+    if info["y_pos"] > 110:
+        reward += 0.02 # slighly encourage jumping
+
+    reward -= 0.1 # make it go fast right
+
     if remaining_lives > info['life']:
-        # remaining_lives -= 1
         reward -= 15 # dying is forbidden
 
     return reward
