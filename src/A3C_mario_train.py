@@ -32,8 +32,8 @@ if __name__ == "__main__":
 
 # Define the save directory
 BASE_DIR = Path(__file__).resolve().parent
-SAVE_DIR = BASE_DIR / "a2c_simple_movement_models"
-LOG_FILE_NAME = BASE_DIR / "a2c_simple_movement_models" / "episodes_log.log"
+SAVE_DIR = BASE_DIR / "../models/a2c_simple_movement_models"
+LOG_FILE_NAME = BASE_DIR / "../models/a2c_simple_movement_models" / "episodes_log.log"
 LOAD_MODEL_EPISODE = -1
 LEARNING_RATE = 1e-4
 GAMMA = 0.99

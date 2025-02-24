@@ -12,8 +12,8 @@ from utils import preprocess_smaller_state, record_info_for_episode, get_reward
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-SAVE_DIR = BASE_DIR / "dqn_simple_movement_one_life_action_steps_models"
-LOG_FILE_NAME = BASE_DIR / "dqn_simple_movement_one_life_action_steps_models" / "episodes_log.log"
+SAVE_DIR = BASE_DIR / "../models/dqn_simple_movement_one_life_action_steps_models"
+LOG_FILE_NAME = BASE_DIR / "../models/dqn_simple_movement_one_life_action_steps_models" / "episodes_log.log"
 START_MODEL_EPISODE = 12000
 LEARNING_RATE = 0.0005
 GAMMA = 0.9

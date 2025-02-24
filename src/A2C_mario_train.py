@@ -13,8 +13,8 @@ from pathlib import Path
 import os
 
 BASE_DIR = Path(__file__).resolve().parent
-SAVE_DIR = BASE_DIR / "a2c_simple_movement_new_models"
-LOG_FILE_NAME = BASE_DIR / "a2c_simple_movement_new_models" / "episodes_log.log"
+SAVE_DIR = BASE_DIR / "../models/a2c_simple_movement_new_models"
+LOG_FILE_NAME = BASE_DIR / "../models/a2c_simple_movement_new_models" / "episodes_log.log"
 LOAD_MODEL_EPISODE = -1
 LEARNING_RATE = 1e-3
 GAMMA = 0.99
