@@ -8,6 +8,7 @@
 Install the required packages using the following commands:
 
 ```bash
+pip install "numpy<2.0.0"
 pip install nes_py
 pip install gym_super_mario_bros
 pip install torch --index-url https://download.pytorch.org/whl/cu121
