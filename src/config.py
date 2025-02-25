@@ -15,14 +15,10 @@ class BaseConfig:
     ONE_LIFE: bool = True
     MODEL_SAVE_EPISODES: int = 1000  # Common save interval
 
-
-    def __post_init__(self):
-        self.LOG_FILE_NAME = self.SAVE_DIR / "episodes_log.log"
-        os.makedirs(self.SAVE_DIR, exist_ok=True)  # Ensure directory exists
-
 @dataclass
 class DQNConfig(BaseConfig):
     SAVE_DIR = MODELS_DIR / "dqn_simple_movement_one_life_action_steps_models"
+    LOG_FILE_NAME = SAVE_DIR / "episodes_log.log"
     START_MODEL_EPISODE: int = 12000
     EPISODE_STOP: int = 50000
     EPISODE_SAVE: int = 2000
@@ -40,6 +36,7 @@ class DQNConfig(BaseConfig):
 @dataclass
 class A2CConfig(BaseConfig):
     SAVE_DIR = MODELS_DIR / "a2c_simple_movement_new_models"
+    LOG_FILE_NAME = SAVE_DIR / "episodes_log.log"
     LOAD_MODEL_EPISODE: int = -1
     MAX_ENV_STEPS: int = 6000
     MAX_EPISODE_TRAIN: int = 10000
@@ -47,6 +44,7 @@ class A2CConfig(BaseConfig):
 @dataclass
 class A3CConfig(BaseConfig):
     SAVE_DIR = MODELS_DIR / "a3c_simple_movement_models"
+    LOG_FILE_NAME = SAVE_DIR / "episodes_log.log"
     LOAD_MODEL_EPISODE: int = -1
     LEARNING_RATE: float = 1e-4  # Different from BaseConfig
     ENTROPY_COEF: float = 0.05
