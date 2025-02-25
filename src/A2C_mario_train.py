@@ -9,21 +9,11 @@ from actor_critic.actor_critic import ActorCritic, device
 from utils import preprocess_smaller_state, get_reward, record_info_for_worker
 from pynput import keyboard
 from time import time
-from pathlib import Path
-import os
+from config import A2CConfig
 
-BASE_DIR = Path(__file__).resolve().parent
-SAVE_DIR = BASE_DIR / "../models/a2c_simple_movement_new_models"
-LOG_FILE_NAME = BASE_DIR / "../models/a2c_simple_movement_new_models" / "episodes_log.log"
-LOAD_MODEL_EPISODE = -1
-LEARNING_RATE = 1e-3
-GAMMA = 0.99
-MAX_ENV_STEPS = 6000
-MAX_EPISODE_TRAIN = 10000
-MODEL_SAVE_EPISODES = 1000
-ONE_LIFE = True
+config = A2CConfig
 
-env = gym_super_mario_bros.make('SuperMarioBros-v0', max_episode_steps=MAX_ENV_STEPS)
+env = gym_super_mario_bros.make('SuperMarioBros-v0', max_episode_steps=config.MAX_ENV_STEPS)
 env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
 input_shape = preprocess_smaller_state(env.reset(), device).unsqueeze(0).shape
@@ -39,15 +29,12 @@ def on_press(key):
 listener = keyboard.Listener(on_press=on_press)
 listener.start()
 
-if not os.path.exists(SAVE_DIR):
-    os.makedirs(SAVE_DIR)
-
-def save_model(model, episode, save_dir=SAVE_DIR):
+def save_model(model, episode, save_dir=config.SAVE_DIR):
     model_path = save_dir / f"a2c_model_episode_{episode}.pth"
     torch.save(model.state_dict(), model_path)
     print(f"Model saved at episode {episode} to {model_path}")
 
-def load_model(model, episode, save_dir=SAVE_DIR):
+def load_model(model, episode, save_dir=config.SAVE_DIR):
     model_path = save_dir / f"a2c_model_episode_{episode}.pth"
     model.load_state_dict(torch.load(model_path))
     print(f"Model loaded from episode {episode} from {model_path}")
@@ -59,12 +46,12 @@ def train():
     n_actions = len(SIMPLE_MOVEMENT)
     model = ActorCritic(input_shape, n_actions).to(device)
 
-    if LOAD_MODEL_EPISODE != -1:
-        load_model(model, LOAD_MODEL_EPISODE)
+    if config.LOAD_MODEL_EPISODE != -1:
+        load_model(model, config.LOAD_MODEL_EPISODE)
 
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
 
-    for episode in range(MAX_EPISODE_TRAIN + 1):
+    for episode in range(config.MAX_EPISODE_TRAIN + 1):
         start = time()
         state = preprocess_smaller_state(env.reset(), device).unsqueeze(0).unsqueeze(0) # two times for grayscale and batch size
         done = False
@@ -89,12 +76,12 @@ def train():
             
             state = next_state
 
-            if info['life'] < 2 and ONE_LIFE:
+            if info['life'] < 2 and config.ONE_LIFE:
                 break
         
         returns, G = [], 0
         for r in reversed(rewards):
-            G = r + GAMMA * G
+            G = r + config.GAMMA * G
             returns.insert(0, G)
 
         returns = torch.tensor(returns).to(device)
@@ -115,7 +102,7 @@ def train():
         took_time = time() - start
 
         print(f"Finished episode: {episode}. Time: {took_time:.2f}. Total reward: {total_reward}. Estimated reward: {estimated_reward}")
-        record_info_for_worker(LOG_FILE_NAME, episode, 0, total_reward, took_time, info)
+        record_info_for_worker(config.LOG_FILE_NAME, episode, 0, total_reward, took_time, info)
 
 
         if stop_training:
@@ -123,7 +110,7 @@ def train():
             save_model(model, episode)
             break
 
-        if episode % MODEL_SAVE_EPISODES == 0:
+        if episode % config.MODEL_SAVE_EPISODES == 0:
             print("saving model...")
             save_model(model, episode)
     

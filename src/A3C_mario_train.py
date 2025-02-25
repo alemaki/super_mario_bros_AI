@@ -8,12 +8,14 @@ from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from actor_critic.actor_critic import ActorCritic, device
 from actor_critic.shared_adam import SharedAdam
 from utils import preprocess_smaller_state, record_info_for_worker, get_reward
-import os
-from pathlib import Path
+
 import signal
 import sys
 from pynput import keyboard
 import time
+from config import A3CConfig
+
+config = A3CConfig()
 
 # Currently deprecated.
 
@@ -30,30 +32,13 @@ if __name__ == "__main__":
     global_model_lock = mp.Lock()
     stop_flag = mp.Value('b', False)
 
-# Define the save directory
-BASE_DIR = Path(__file__).resolve().parent
-SAVE_DIR = BASE_DIR / "../models/a2c_simple_movement_models"
-LOG_FILE_NAME = BASE_DIR / "../models/a2c_simple_movement_models" / "episodes_log.log"
-LOAD_MODEL_EPISODE = -1
-LEARNING_RATE = 1e-4
-GAMMA = 0.99
-ENTROPY_COEF = 0.05
-MODEL_SAVE_EPISODES = 1000
-N_STEPS = 12
-ACTION_STEPS = 4
-MAX_STEPS_ENV = 5000
-MAX_EPISODES = 50000
-ONE_LIFE = True
 
-if not os.path.exists(SAVE_DIR):
-    os.makedirs(SAVE_DIR)
-
-def save_model(global_model, episode, save_dir=SAVE_DIR):
+def save_model(global_model, episode, save_dir=config.SAVE_DIR):
     model_path = save_dir / f"global_model_episode_{episode}.pth"
     torch.save(global_model.state_dict(), model_path)
     print(f"Model saved at episode {episode} to {model_path}")
 
-def load_model(global_model, episode, save_dir=SAVE_DIR):
+def load_model(global_model, episode, save_dir=config.SAVE_DIR):
     model_path = save_dir / f"global_model_episode_{episode}.pth"
     global_model.load_state_dict(torch.load(model_path))
     print(f"Model loaded from episode {episode} from {model_path}")
@@ -81,7 +66,7 @@ def compute_advantages_and_update(
     R = local_model(states[-1].unsqueeze(0))[1].item()
     returns = []
     for r in reversed(rewards):
-        R = r + GAMMA * R
+        R = r + config.GAMMA * R
         returns.insert(0, R)
     returns = torch.tensor(returns, device=device)
 
@@ -91,7 +76,7 @@ def compute_advantages_and_update(
     policy_loss = -(log_probs * advantages.detach()).mean()
     value_loss = 0.5 * (returns - values).pow(2).mean()
     entropy = -(action_probs * torch.log(action_probs)).sum(dim=1).mean()
-    entropy_loss = -ENTROPY_COEF * entropy
+    entropy_loss = -config.ENTROPY_COEF * entropy
 
     total_loss = policy_loss + value_loss + entropy_loss
 
@@ -148,7 +133,7 @@ def worker(global_model,
            global_model_lock,
            stop_flag):
 
-    env = gym_super_mario_bros.make(env_name, max_episode_steps=MAX_STEPS_ENV)
+    env = gym_super_mario_bros.make(env_name, max_episode_steps=config.MAX_STEPS_ENV)
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
     input_shape = preprocess_smaller_state(env.reset(), device).shape
     local_model = ActorCritic(input_shape, n_actions, True, 2).to(device)
@@ -159,7 +144,7 @@ def worker(global_model,
     with global_model_lock:
         local_model.load_state_dict(global_model.state_dict())
 
-    while not stop_flag.value and global_counter.value <= MAX_EPISODES:
+    while not stop_flag.value and global_counter.value <= config.MAX_EPISODES:
         # old_state_dict = {}
         # for key in global_model.state_dict():
         #     old_state_dict[key] = global_model.state_dict()[key].clone()
@@ -174,7 +159,7 @@ def worker(global_model,
         while not done and not truncated:
             #print(f"Worker {worker_id} calls")
             states, actions, rewards = [], [], []
-            for _ in range(N_STEPS//ACTION_STEPS):
+            for _ in range(config.N_STEPS//config.ACTION_STEPS):
                 env.render()
                 with torch.no_grad():
                     action_probs, value = local_model(state)
@@ -182,7 +167,7 @@ def worker(global_model,
                 #print(action_probs)
                 action = torch.multinomial(action_probs, 1).item()
 
-                for _ in range(ACTION_STEPS):
+                for _ in range(config.ACTION_STEPS):
                     state, reward, done, truncated, info = env.step(action)
                     reward = get_reward(info, reward)
                     state = preprocess_smaller_state(state, device=device)
@@ -192,13 +177,13 @@ def worker(global_model,
                     actions.append(action)
                     rewards.append(reward)
                     if done:
-                        while states.size < N_STEPS:
+                        while states.size < config.N_STEPS:
                             states.append(state)
                             actions.append(action)
                             rewards.append(reward)
                         break
 
-                estimated_reward += value.item() / N_STEPS # the critic estimates the advantage. which is for n steps
+                estimated_reward += value.item() / config.N_STEPS # the critic estimates the advantage. which is for n steps
 
                 if done or truncated:
                     break
@@ -213,7 +198,7 @@ def worker(global_model,
                                             done,
                                             global_model_lock)
 
-            if ONE_LIFE and info['life'] <= 1:
+            if config.ONE_LIFE and info['life'] <= 1:
                 break
 
 
@@ -224,10 +209,10 @@ def worker(global_model,
         with episode_count_lock:
             global_counter.value += 1
             current_episode = global_counter.value
-            record_info_for_worker(LOG_FILE_NAME, current_episode, worker_id, elapsed_time, total_reward, info)
+            record_info_for_worker(config.LOG_FILE_NAME, current_episode, worker_id, elapsed_time, total_reward, info)
             print(f"Worker {worker_id} finished episode: {current_episode}. Time: {elapsed_time:.2f}. Total reward: {total_reward}. Estimated reward: {estimated_reward}")
 
-        if current_episode % MODEL_SAVE_EPISODES == 0:
+        if current_episode % config.MODEL_SAVE_EPISODES == 0:
             with global_model_lock:
                 save_model(global_model, current_episode)
     
@@ -242,12 +227,12 @@ if __name__ == "__main__":
     n_actions = env.action_space.n
 
     global_model = ActorCritic(input_shape, n_actions, True, 2).to(device)
-    if LOAD_MODEL_EPISODE != -1:
-        load_model(global_model, LOAD_MODEL_EPISODE, SAVE_DIR)
+    if config.LOAD_MODEL_EPISODE != -1:
+        load_model(global_model, config.LOAD_MODEL_EPISODE, config.SAVE_DIR)
     global_model.share_memory()
     global_model.train()
 
-    optimizer = SharedAdam(global_model.parameters(), lr=LEARNING_RATE)
+    optimizer = SharedAdam(global_model.parameters(), lr=config.LEARNING_RATE)
 
     # num_workers = 8 #mp.cpu_count() - 8
     # processes = []
